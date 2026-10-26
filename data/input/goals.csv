@@ -1,0 +1,9 @@
+employee_id,goal_id,goal_name,weight
+E001,G01,Project delivery,50
+E001,G02,Code quality,30
+E001,G03,Team collaboration,20
+E002,G04,Task completion,60
+E002,G05,Communication,40
+E003,G06,System reliability,50
+E003,G07,Project delivery,30
+E003,G08,Documentation,20

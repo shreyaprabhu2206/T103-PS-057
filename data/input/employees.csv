@@ -1,0 +1,4 @@
+employee_id,business_unit,grade,basic_salary,joining_date,manager_id,current_role_band,grade_start_date,previous_final_rating
+E001,Finance,G3,30000,2023-06-15,M001,B3,2024-05-01,3
+E002,Finance,G2,22000,2025-10-10,M001,B2,2025-10-11,2
+E003,IT,G4,45000,2022-03-20,M002,B4,2023-04-01,4

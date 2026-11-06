@@ -1,14 +1,23 @@
 
 from pathlib import Path
-from src.calibration import get_eligibility_results
+
+from src.calibration import (
+    get_eligibility_results,
+    distribute_ratings,
+)
 from src.validation import load_and_validate
 from src.scoring import calculate_raw_scores
-from src.calibration import distribute_ratings
+from src.compensation import calculate_compensation
+
+
+APPRAISAL_YEAR = 2025
+
 
 def main():
     input_dir = Path(__file__).parent / "data" / "input"
 
     try:
+        # 1. Load and validate input data
         employees, goals, ratings = load_and_validate(input_dir)
 
         print("Input validation successful!")
@@ -16,6 +25,7 @@ def main():
         print(f"Goals loaded: {len(goals)}")
         print(f"Ratings loaded: {len(ratings)}")
 
+        # 2. Calculate raw appraisal scores
         scores = calculate_raw_scores(
             employees, goals, ratings
         )
@@ -30,11 +40,12 @@ def main():
                 f"Raw: {result['raw_score']:.2f}"
             )
 
-            eligibility = get_eligibility_results(
-            employees, 2025
+        # 3. Check eligibility
+        eligibility = get_eligibility_results(
+            employees, APPRAISAL_YEAR
         )
 
-        print("\n--- ELIGIBILITY RESULTS (2025) ---")
+        print(f"\n--- ELIGIBILITY RESULTS ({APPRAISAL_YEAR}) ---")
 
         for employee_id in sorted(employees):
             print(
@@ -42,15 +53,19 @@ def main():
                 f"Joining date: {employees[employee_id].joining_date} | "
                 f"Status: {eligibility[employee_id]}"
             )
-        
+
+        # 4. Assign final bell-curve ratings
         final_results = distribute_ratings(
             employees,
             scores,
             eligibility,
-            2025
+            APPRAISAL_YEAR
         )
 
-        print("\n--- FINAL BELL-CURVE RATINGS (2025) ---")
+        print(
+            f"\n--- FINAL BELL-CURVE RATINGS "
+            f"({APPRAISAL_YEAR}) ---"
+        )
 
         for employee_id in sorted(employees):
             result = final_results[employee_id]
@@ -58,7 +73,7 @@ def main():
             if result["final_rating"] is None:
                 print(
                     f"{employee_id} | NOT_ELIGIBLE "
-                    f"| No final rating"
+                    "| No final rating"
                 )
             else:
                 print(
@@ -67,6 +82,40 @@ def main():
                     f"Rank: {result['rank']} | "
                     f"Final rating: {result['final_rating']}"
                 )
+
+        # 5. Calculate compensation
+        print("\n--- COMPENSATION REPORT ---")
+
+        for employee_id in sorted(employees):
+            result = final_results[employee_id]
+
+            if result["final_rating"] is None:
+                print(
+                    f"{employee_id} | "
+                    "NOT_ELIGIBLE | No increment"
+                )
+                continue
+
+            employee = employees[employee_id]
+
+            compensation = calculate_compensation(
+                employee,
+                result["final_rating"],
+                APPRAISAL_YEAR
+            )
+
+            print(
+                f"{employee_id} | "
+                f"Rating: {compensation['final_rating']} | "
+                f"Increment: "
+                f"{compensation['increment_rate'] * 100:.0f}% | "
+                f"Proration: "
+                f"{compensation['proration'] * 100:.1f}% | "
+                f"Current salary: "
+                f"Rs.{compensation['current_salary']} | "
+                f"Revised salary: "
+                f"Rs.{compensation['revised_salary']}"
+            )
 
     except (ValueError, OSError, KeyError) as error:
         print(f"INPUT OR SCORING ERROR: {error}")

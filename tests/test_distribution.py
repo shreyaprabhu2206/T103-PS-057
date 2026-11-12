@@ -129,6 +129,62 @@ class TestDistribution(unittest.TestCase):
 
         self.assertEqual(pools, [["Finance", "IT"]])
 
+    def test_exactly_ten_eligible_employees_are_not_pooled(self):
+        employees = {
+            f"E{i:03d}": self.create_employee(
+                f"E{i:03d}", "IT", date(2022, 1, 1)
+            )
+            for i in range(10)
+        }
+        eligibility = {
+            employee_id: "ELIGIBLE" for employee_id in employees
+        }
+
+        pools, units = build_distribution_pools(employees, eligibility)
+
+        self.assertEqual(pools, [["IT"]])
+        self.assertEqual(len(units["IT"]), 10)
+
+    def test_nine_eligible_employees_pool_with_next_unit(self):
+        employees = {
+            f"A{i:03d}": self.create_employee(
+                f"A{i:03d}", "Alpha", date(2022, 1, 1)
+            )
+            for i in range(9)
+        }
+        employees["B001"] = self.create_employee(
+            "B001", "Beta", date(2022, 1, 1)
+        )
+        eligibility = {
+            employee_id: "ELIGIBLE" for employee_id in employees
+        }
+
+        pools, units = build_distribution_pools(employees, eligibility)
+
+        self.assertEqual(pools, [["Alpha", "Beta"]])
+        self.assertEqual(len(units["Alpha"]) + len(units["Beta"]), 10)
+
+    def test_identical_scores_and_tenure_use_lower_employee_id(self):
+        employees = {
+            employee_id: self.create_employee(
+                employee_id, "IT", date(2022, 1, 1)
+            )
+            for employee_id in ("E002", "E001")
+        }
+        scores = {
+            employee_id: {"raw_score": 4.0, "goal_score": 4.0}
+            for employee_id in employees
+        }
+        eligibility = {
+            employee_id: "ELIGIBLE" for employee_id in employees
+        }
+
+        results = distribute_ratings(
+            employees, scores, eligibility, 2025
+        )
+
+        self.assertLess(results["E001"]["rank"], results["E002"]["rank"])
+
 
 if __name__ == "__main__":
     unittest.main()

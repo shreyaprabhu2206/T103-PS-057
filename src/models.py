@@ -8,12 +8,13 @@ class Employee:
     employee_id: str
     business_unit: str
     grade: str
-    basic_salary: int
+    basic_salary: float
     joining_date: date
     manager_id: str
     current_role_band: str
     grade_start_date: date
     previous_final_rating: Optional[int] = None
+    months_in_grade: Optional[int] = None
 
 
 @dataclass

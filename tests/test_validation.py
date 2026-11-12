@@ -87,6 +87,31 @@ class TestValidation(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "INVALID_WEIGHTS"):
             load_goals(path, self.employees)
 
+    def test_goal_weights_totaling_99_or_101_are_invalid(self):
+        for weight, total in ((99, 99), (100, 101)):
+            with self.subTest(total=total):
+                goals = [{
+                    "employee_id": "E001",
+                    "goal_id": "G01",
+                    "goal_name": "Goal",
+                    "weight": str(weight),
+                }]
+                if total == 101:
+                    goals.append({
+                        "employee_id": "E001",
+                        "goal_id": "G02",
+                        "goal_name": "Second goal",
+                        "weight": "1",
+                    })
+                path = self.write_csv(
+                    f"goals_{total}.csv",
+                    ["employee_id", "goal_id", "goal_name", "weight"],
+                    goals,
+                )
+
+                with self.assertRaisesRegex(ValueError, "INVALID_WEIGHTS"):
+                    load_goals(path, self.employees)
+
     def test_goal_references_unknown_employee(self):
         path = self.write_csv(
             "goals.csv",

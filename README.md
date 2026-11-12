@@ -1,143 +1,135 @@
-# Performance Appraisal and Bell-Curve Normalisation with Increment Bands
+# PS-057 – Performance Appraisal and Bell-Curve Normalisation with Increment Bands — Sample Data Pack
 
-## Project Information
+Prepared by 10 SECONDS for Team T103.
 
- Field Details 
+Domain: Enterprise / HR – Performance. Build the back-end engine a 500-person company's HR team uses to collect goal and competency ratings, normalise manager scores into a forced distribution per business unit, assign final ratings and compute increments, promotions and variable pay. Command-file driven; no UI.
 
- Project ID : T103-PS-057 
- Team       : T103 
- Section    : ISE D 
- Programming Language : Python 3.10+ 
- Project Type : Command-file Based Backend 
- Domain : Human Resource Management 
+## Files
 
-## 1. Project Overview
+| File | What it holds | Rows |
+|---|---|---|
+| `employees.csv` | Employees (180) | 180 |
+| `goals.csv` | Five goals per employee with weights | 900 |
+| `ratings.csv` | Self and manager ratings per goal and competency | 1621 |
+| `grade_bands.csv` | Monthly basic band per grade | 7 |
+| `units.csv` | Annual increment-cost budget per unit | 6 |
+| `commands.txt` | Command file; process strictly in file order. | 17 |
 
-Performance appraisal is an important process used by organisations to evaluate employee performance and determine salary increments, promotions and variable pay.
+Row counts exclude the header line (CSV) and comment lines (commands.txt).
 
-In many organisations, managing employee ratings manually can be time-consuming and inconsistent. This project aims to develop a Python-based Performance Appraisal and Bell-Curve Normalisation system that automates the appraisal process using predefined business rules.
+## Column reference
 
-The system processes employee information, goals, ratings and compensation budgets from CSV files. It calculates performance scores, applies bell-curve normalisation and determines compensation based on the final appraisal ratings.
+Conventions: dates `YYYY-MM-DD`; timestamps `YYYY-MM-DD HH:MM:SS` (24h, IST, no timezone suffix); money in Rs as plain decimals with at most 2 decimals (no commas, no symbol); percentages as plain numbers (12.5 = 12.5%); booleans `true`/`false`; IDs uppercase with a fixed prefix.
 
-## 2. Problem Statement
+### `employees.csv`
 
-Organisations need a consistent way to evaluate employee performance and distribute ratings fairly across business units.
+| Column | Type | Units / format | Allowed values | Notes |
+|---|---|---|---|---|
+| `emp_id` | string | EMP-nnnn |  | Primary key; final tie-break |
+| `name` | string |  |  |  |
+| `unit` | enum |  | ENGINEERING/FINANCE/HR/LEGAL/OPERATIONS/SALES | Distribution unit |
+| `grade` | enum |  | G1–G7 |  |
+| `basic_salary` | decimal | Rs per month |  | Current monthly basic |
+| `date_of_joining` | date |  |  | Eligibility and pro-ration; tenure tie-break |
+| `manager_id` | string |  |  | Informational |
+| `months_in_grade` | integer | months |  | Promotion eligibility |
+| `previous_year_rating` | integer |  | 1–5 | Consecutive rating-2 PIP rule |
+| `role_band` | enum |  | IC/LEAD/MANAGER | Informational |
 
-Manual appraisal processes can lead to calculation errors, inconsistent ratings and difficulties in managing compensation budgets.
+### `goals.csv`
 
-This project addresses these challenges by developing an automated system that validates employee data, calculates appraisal scores, assigns final ratings and determines compensation according to defined business rules.
+| Column | Type | Units / format | Allowed values | Notes |
+|---|---|---|---|---|
+| `emp_id` | string |  | employees.csv | FK |
+| `goal_id` | string | EMP-nnnn-Gn |  | Primary key |
+| `goal_title` | string |  |  |  |
+| `weight` | integer | percent |  | Must sum to 100 per employee (two planted exceptions) |
 
-## 3. Project Objectives
+### `ratings.csv`
 
-- Automate the employee performance appraisal process.
-- Validate employee, goal and rating information.
-- Calculate weighted goal scores and competency scores.
-- Determine raw appraisal scores.
-- Apply bell-curve normalisation to assign final ratings.
-- Calculate salary increments and revised basic salaries.
-- Support promotion and variable-pay calculations.
-- Apply compensation budget constraints.
-- Generate appraisal results using a command-based workflow.
+| Column | Type | Units / format | Allowed values | Notes |
+|---|---|---|---|---|
+| `emp_id` | string |  | employees.csv | FK |
+| `item_type` | enum |  | GOAL/COMPETENCY |  |
+| `item_id` | string |  | goal_id or competency code |  |
+| `self_rating` | integer |  | 1–5 | Gap report only |
+| `manager_rating` | integer |  | 1–5 (one 6 and one blank planted) | Used for the raw score |
 
-## 4. Key Features
+### `grade_bands.csv`
 
-- **CSV-based input:** Reads employee, goal, rating and budget information from CSV files.
-- **Input validation:** Checks required fields, rating ranges and goal-weight totals.
-- **Performance scoring:** Calculates goal, competency and raw appraisal scores.
-- **Eligibility checking:** Determines employee eligibility based on appraisal rules.
-- **Bell-curve normalisation:** Assigns final ratings according to the specified distribution.
-- **Compensation calculation:** Calculates increments and revised salaries.
-- **Budget management:** Supports business-unit compensation budget rules.
-- **Automated testing:** Tests important business rules and calculations.
+| Column | Type | Units / format | Allowed values | Notes |
+|---|---|---|---|---|
+| `grade` | enum |  | G1–G7 |  |
+| `band_min` | decimal | Rs per month |  |  |
+| `band_max` | decimal | Rs per month |  | Revised basic cap; excess paid as lump sum |
 
-*Note: Advanced features are subject to completion and verification against the assignment requirements.*
+### `units.csv`
 
-## 5. Technology Stack
+| Column | Type | Units / format | Allowed values | Notes |
+|---|---|---|---|---|
+| `unit` | enum |  |  |  |
+| `increment_budget_annual` | decimal | Rs per year |  | Total cost guard: sum of (revised - current basic) x 12 |
+| `unit_head` | string |  |  |  |
 
-| Technology | Purpose |
-|---|---|
-| Python 3.10+ | Backend development |
-| CSV | Input data storage |
-| Git | Version control |
-| GitHub | Source code collaboration |
-| VS Code | Development environment |
-| unittest / pytest | Automated testing, depending on the configured test framework |
+### General notes
 
+- Where the brief is silent: variable pay = target% x annual basic (12 x current basic) x rating multiplier x company multiplier; pooled units are reported under the pool name 'HR+LEGAL'; percentages scaled by budget are floored to 1 decimal.
 
-## 6. Input Files
+## Command file format
 
-The application uses the following CSV files:
+`commands.txt` holds one command per line in the form `COMMAND_NAME|arg1|arg2|...`. Commands MUST be processed strictly in file order. Lines starting with `#` are comments and blank lines are ignored. Every command used in this pack, with its argument order:
 
-| File | Description |
-|---|---|
-| employees.csv | Contains employee details such as ID, business unit, grade, salary and joining date. |
-| goals.csv | Contains employee goals and their assigned weights. |
-| ratings.csv | Contains self-ratings and manager ratings. |
-| budgets.csv | Contains compensation budgets for business units. |
-| commands.csv | Contains commands or operations for the application workflow. |
+| Command | Arguments (in order) | Meaning |
+|---|---|---|
+| `SET_APPRAISAL_YEAR` | `year|cutoff_date` | Eligibility cut-off (joiners after it are NOT_ELIGIBLE; 1 Apr–cut-off pro-rated) |
+| `SET_COMPANY_MULTIPLIER` | `multiplier` | Company multiplier on variable pay |
+| `LOAD` | `employees|goals|ratings|bands|units` | Load master data |
+| `RUN_APPRAISAL` | `` | Compute raw scores, distribution, increments, promotions, variable pay for all units |
+| `APPEAL` | `appeal_id|emp_id|goal_id|new_rating[|goal_id|new_rating]` | Raise manager rating on at most 2 goals by at most 1 point each |
+| `RERUN_UNIT` | `unit` | Recompute the unit (or its pool) after an appeal and report changed ratings |
+| `PRINT_DISTRIBUTION` | `ALL` | Write distribution.csv |
+| `PRINT_LETTERS` | `ALL` | Write letters.csv |
 
-## 7. Application Workflow
+## Planted scenarios
 
-The application follows these major stages:
+Every edge case from the brief is planted at the location given. Line numbers count the header as line 1 for CSVs and count every physical line (including comments) for commands.txt.
 
-1. Load input data from CSV files.
-2. Validate employee, goal, rating and budget information.
-3. Calculate weighted goal scores.
-4. Calculate competency scores.
-5. Calculate raw appraisal scores.
-6. Check employee eligibility.
-7. Apply bell-curve normalisation.
-8. Assign final appraisal ratings.
-9. Calculate increments and compensation.
-10. Generate appraisal results.
+- **EC1: Unit with exactly 10 eligible employees (no pooling) versus 9 (pooled)** — FINANCE has 11 employees of which exactly 10 are eligible (EMP-0081 joined 2026-10-01 → NOT_ELIGIBLE) → distributed alone; HR has 10 employees of which 9 are eligible (EMP-0091 joined 2026-11-15) → pooled with LEGAL (next unit alphabetically) before distribution
+- **EC2: Two employees with identical raw score, goal score and tenure** — EMP-0111 and EMP-0112 have identical goal weights, identical manager ratings (raw 3.79), identical goal-only score and the same date_of_joining 2021-06-01 → tie broken by lower employee ID
+- **EC3: Joiner on exactly 30 September versus 1 October** — EMP-0080 joined exactly 2026-09-30 → eligible with pro-rated increment (completed months Apr–Sep); EMP-0081 joined 2026-10-01 → NOT_ELIGIBLE
+- **EC4: Revised basic exactly at grade band max** — EMP-0011 (G3, basic 56600.00, mid-pack raw 3.43 → rating 3, 6%) → 56600 x 1.06 = 59996 rounded up to 60000.00 = G3 band_max exactly (no lump sum)
+- **EC5: Promotion count where 8% of headcount is a non-integer** — SALES has 35 eligible employees → 8% = 2.8 → ceil = 3 promotions at most; EMP-0146, EMP-0147, EMP-0148, EMP-0149, EMP-0150 are all promotion-eligible, so only the top 3 by raw score are promoted
+- **EC6: Appeal that changes which employee crosses the top-10% boundary** — ENGINEERING (70 eligible, top-10% = 7): EMP-0007 is 7th (raw 4.57) and EMP-0008 is 8th (raw 4.43); commands.txt line 7 APPEAL APL-01 raises EMP-0008's G1 and G2 by 1 each → raw 4.71 → it crosses into rating 5 and EMP-0007 drops to rating 4 on RERUN_UNIT
+- **EC7: Budget scaling that would push a rating-3 employee below the Rs 25,000 floor** — OPERATIONS budget (units.csv) is ~55% of the unscaled cost → increment percentages scale down; EMP-0126 (G1, basic 23800.00, rating 3) would fall below 25,000 after scaling → raised to the 25,000.00 floor
+- **EC8: Employee with goal weights summing to 99 or 101** — goals.csv: EMP-0094 weights sum to 99 and EMP-0095 to 101 → INVALID_WEIGHTS, excluded from the distribution
+- **Extra: pro-rated mid-year joiner** — EMP-0156 joined 2026-06-15 → completed months to 30 Sep = 3 → increment x 3/12
+- **Extra: PIP** — EMP-0136 has previous_year_rating 2 and bottom-band scores this year → if rated 2 again, PIP: zero increment and zero variable; EMP-0070 has the lowest ENGINEERING raw → rating 1 → PIP
+- **Extra: invalid appeals** — commands.txt line 11 APL-03 raises a goal by 2 points → reject; line 13 APL-04 touches 3 goals → reject; APL-02 and APL-05 are valid single-goal +1 appeals
+- **Extra: bad rating rows** — ratings.csv line 103 duplicates line 102 → use once; line 872 manager_rating 6 → invalid (treat employee as INVALID_RATING and exclude); line 876 blank manager_rating → INVALID_RATING
+- **Extra: grade cap lump sum** — Several employees have basic within 5% of band_max; a 10% or 14% increment must be capped at band_max with the excess as a one-time lump sum
 
-## 8. Bell-Curve Rating Distribution
+## What is NOT in this pack
 
-The project uses the following target rating distribution:
+Expected outputs are not provided for this set. Validate your engine with your own test suite against the rules in your brief (BR-01 … BR-nn). A separate hidden input set with the same schema will be used at final evaluation; outputs are compared field-for-field, so follow the column formats above exactly in your own output.
 
-| Final Rating | Distribution |
-|---|---:|
-| 5 – Outstanding | 10% |
-| 4 – Exceeds Expectations | 20% |
-| 3 – Meets Expectations | 50% |
-| 2 – Needs Improvement | 15% |
-| 1 – Unsatisfactory | 5% |
-| **Total** | **100%** |
+## Output format expected at evaluation
 
-## 9. Performance Score Calculation
+Produce these files (CSV, header row, same conventions as above, rows in the order stated). Numeric columns must be plain decimals with exactly the decimals stated.
 
-The raw appraisal score is calculated using the following formula:
+### `letters.csv`
 
-**Raw Score = (70% × Goal Score) + (30% × Competency Score)**
+One row per employee after the final RERUN, ordered by emp_id.
 
-Goal scores are calculated using the assigned goal weights, while competency scores are calculated using manager ratings.
+Columns in order: `emp_id`, `unit`, `eligible`, `raw_score`, `goal_score`, `final_rating`, `increment_pct`, `pro_rated`, `revised_basic`, `lump_sum`, `variable_payout`, `promoted`, `new_grade`, `pip`, `status_code`
 
+### `distribution.csv`
 
-## 10. Documentation
+One row per unit (or pool) per rating per PRINT_DISTRIBUTION, in command order.
 
-Detailed project documentation is available in the `docs/` directory:
+Columns in order: `print_no`, `unit_or_pool`, `eligible_count`, `rating`, `bucket_size`, `emp_ids`
 
-- `business_rules.md` – Business rules followed by the application.
-- `glossary.md` – Definitions of important project terms.
-- `class_diagram.md` – UML class diagram.
-- `state_diagram.md` – UML state diagram.
+### `appeal_changes.csv`
 
-## 11. Team Collaboration
+Employees whose final rating changed after each appeal.
 
-The project uses Git and GitHub for version control and collaboration.
-
-Team members can clone the repository, create their own branches, implement assigned modules, test their changes and push updates to GitHub.
-
-Before starting work, team members should pull the latest changes from the shared repository.
-
-## 12. Expected Outcome
-
-The expected outcome is a Python-based appraisal system that processes employee performance data, applies predefined appraisal and calibration rules, and calculates compensation-related results.
-
-The system aims to reduce manual calculations, improve consistency and make the appraisal process easier to manage.
-
----
-
-**Project:** T103-PS-057  
-**Team:** T103  
-**Department:** Information Science and Engineering
+Columns in order: `appeal_id`, `unit_or_pool`, `emp_id`, `rating_before`, `rating_after`

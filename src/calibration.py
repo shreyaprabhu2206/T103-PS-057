@@ -1,14 +1,89 @@
 
 from datetime import date
+from pathlib import Path
 
 
-def check_eligibility(employee, appraisal_year):
+def load_appraisal_settings(commands_path):
+    """Load the appraisal year and cutoff date from the command file."""
+    setting = None
+
+    with Path(commands_path).open("r", encoding="utf-8-sig") as file:
+        for line_number, line in enumerate(file, start=1):
+            parts = [part.strip() for part in line.split("|")]
+            if not parts or parts[0] != "SET_APPRAISAL_YEAR":
+                continue
+            if setting is not None:
+                raise ValueError(
+                    "SET_APPRAISAL_YEAR may be specified only once"
+                )
+            if len(parts) != 3 or not parts[1] or not parts[2]:
+                raise ValueError(
+                    "SET_APPRAISAL_YEAR must use "
+                    "SET_APPRAISAL_YEAR|year|YYYY-MM-DD "
+                    f"(line {line_number})"
+                )
+
+            try:
+                appraisal_year = int(parts[1])
+            except ValueError:
+                raise ValueError(
+                    "SET_APPRAISAL_YEAR year must be a four-digit year "
+                    f"(line {line_number})"
+                )
+            if len(parts[1]) != 4 or not 1 <= appraisal_year <= 9998:
+                raise ValueError(
+                    "SET_APPRAISAL_YEAR year must be between 0001 and "
+                    f"9998 (line {line_number})"
+                )
+
+            try:
+                cutoff_date = date.fromisoformat(parts[2])
+            except ValueError:
+                raise ValueError(
+                    "SET_APPRAISAL_YEAR cutoff date must use YYYY-MM-DD "
+                    f"(line {line_number})"
+                )
+            if cutoff_date.isoformat() != parts[2]:
+                raise ValueError(
+                    "SET_APPRAISAL_YEAR cutoff date must use YYYY-MM-DD "
+                    f"(line {line_number})"
+                )
+            if cutoff_date.year != appraisal_year:
+                raise ValueError(
+                    "SET_APPRAISAL_YEAR cutoff date must be in the "
+                    "specified appraisal year"
+                )
+
+            setting = appraisal_year, cutoff_date
+
+    if setting is None:
+        raise ValueError(
+            "Command file is missing "
+            "SET_APPRAISAL_YEAR|year|YYYY-MM-DD"
+        )
+
+    return setting
+
+
+DEFAULT_CUTOFF_MONTH = 9
+DEFAULT_CUTOFF_DAY = 30
+
+
+def _default_appraisal_cutoff(appraisal_year):
+    return date(appraisal_year, DEFAULT_CUTOFF_MONTH, DEFAULT_CUTOFF_DAY)
+
+
+def check_eligibility(
+    employee, appraisal_year, appraisal_cutoff_date=None
+):
     """
     Determine eligibility for the appraisal cycle.
 
-    Employees who join after 30 September are excluded.
+    Employees who join after the configured cutoff are excluded.
     """
-    cutoff_date = date(appraisal_year, 9, 30)
+    cutoff_date = appraisal_cutoff_date or _default_appraisal_cutoff(
+        appraisal_year
+    )
 
     if employee.joining_date > cutoff_date:
         return "NOT_ELIGIBLE"
@@ -16,13 +91,15 @@ def check_eligibility(employee, appraisal_year):
     return "ELIGIBLE"
 
 
-def get_eligibility_results(employees, appraisal_year):
+def get_eligibility_results(
+    employees, appraisal_year, appraisal_cutoff_date=None
+):
     """Return eligibility status for every employee."""
     results = {}
 
     for employee_id, employee in employees.items():
         results[employee_id] = check_eligibility(
-            employee, appraisal_year
+            employee, appraisal_year, appraisal_cutoff_date
         )
 
     return results

@@ -1,2 +1,2 @@
-command_id,command,employee_id,item_type,item_id,new_manager_rating
-C001,RUN_APPRAISAL,,,,
+SET_APPRAISAL_YEAR|2026|2026-09-30
+SET_COMPANY_MULTIPLIER|1.05

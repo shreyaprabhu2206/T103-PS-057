@@ -119,8 +119,10 @@ def calculate_scaled_increment_rates(
     proration_through_cutoff=False,
     annualize_cost=False,
     grade_bands=None,
+    new_grades=None,
 ):
     """Scale unit increment rates when estimated cost exceeds its budget."""
+    new_grades = new_grades or {}
     unit_costs = {}
     unit_employee_ids = {}
 
@@ -204,7 +206,10 @@ def calculate_scaled_increment_rates(
                     ) * 100
                     if rating >= 3:
                         revised_salary = max(revised_salary, 25000)
-                grade_band = grade_bands[employee.grade]
+                applied_grade = new_grades.get(
+                    employee_id, employee.grade
+                )
+                grade_band = grade_bands[applied_grade]
                 revised_salary = min(
                     revised_salary, grade_band["band_max"]
                 )

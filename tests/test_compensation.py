@@ -78,6 +78,20 @@ class TestCompensation(unittest.TestCase):
         self.assertEqual(result["increment_rate"], 0.06)
         self.assertEqual(result["revised_salary"], 31800)
 
+    def test_br26_increment_rates_for_every_final_rating(self):
+        expected_rates = {
+            5: 0.14,
+            4: 0.10,
+            3: 0.06,
+            2: 0.02,
+            1: 0.00,
+        }
+        employee = self.create_employee()
+        for rating, expected_rate in expected_rates.items():
+            with self.subTest(rating=rating):
+                result = calculate_compensation(employee, rating, 2025)
+                self.assertEqual(result["increment_rate"], expected_rate)
+
     def test_full_proration_for_existing_employee(self):
         employee = self.create_employee(
             joining_date=date(2024, 1, 1)
@@ -206,6 +220,57 @@ class TestCompensation(unittest.TestCase):
         self.assertEqual(result["increment_rate"], 0.095)
         self.assertAlmostEqual(result["promotion_increment_rate"], 0.025)
         self.assertEqual(result["revised_salary"], 32900)
+
+    def test_promoted_grade_cap_is_used_and_promotion_increment_is_not_duplicated(self):
+        employee = self.create_employee(
+            salary=30000,
+            joining_date=date(2024, 1, 1),
+        )
+        promoted_grades = {"E001": "G4"}
+        scaled_rates = calculate_scaled_increment_rates(
+            {"E001": employee},
+            {"E001": {"final_rating": 5}},
+            2025,
+            {"IT": 42000},
+            promoted_employee_ids={"E001"},
+            annualize_cost=True,
+            grade_bands={
+                grade: {
+                    "band_min": 1,
+                    "band_max": maximum,
+                }
+                for grade, maximum in {
+                    "G1": 15000,
+                    "G2": 22000,
+                    "G3": 33000,
+                    "G4": 33500,
+                    "G5": 50000,
+                    "G6": 70000,
+                    "G7": 100000,
+                }.items()
+            },
+            new_grades=promoted_grades,
+        )
+        result = calculate_compensation(
+            employee,
+            5,
+            2025,
+            grade_bands_path=self.grade_bands_path,
+            new_grade=promoted_grades["E001"],
+            is_promotion=True,
+            increment_rate_override=scaled_rates["E001"],
+        )
+
+        self.assertAlmostEqual(scaled_rates["E001"], 0.19)
+        self.assertAlmostEqual(result["increment_rate"], 0.19)
+        self.assertAlmostEqual(result["promotion_increment_rate"], 0.05)
+        self.assertEqual(result["grade"], "G4")
+        self.assertEqual(result["revised_salary"], 33500)
+        self.assertEqual(result["lump_sum"], 2200)
+        self.assertLessEqual(
+            (result["revised_salary"] - employee.basic_salary) * 12,
+            42000,
+        )
 
     def test_grade_band_normal_case_below_cap(self):
         employee = self.create_employee(salary=30000)

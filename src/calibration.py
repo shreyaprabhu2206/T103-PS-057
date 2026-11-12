@@ -145,16 +145,6 @@ def build_distribution_pools(employees, eligibility):
 
         pools.append(group)
 
-    # If the final pool is still below 10, merge it with
-    # the preceding pool because no next alphabetical unit exists.
-    if len(pools) > 1:
-        last_pool = pools[-1]
-        last_count = sum(len(units[u]) for u in last_pool)
-
-        if last_count < 10:
-            pools[-2].extend(last_pool)
-            pools.pop()
-
     return pools, units
 
 

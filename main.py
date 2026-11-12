@@ -13,9 +13,10 @@ from src.compensation import (
     calculate_compensation,
     calculate_scaled_increment_rates,
     load_company_multiplier,
+    load_grade_bands,
     load_increment_budgets,
 )
-from src.promotion import select_promotions
+from src.promotion import next_grade_in_order, select_promotions
 from src.appeals import load_appeal_commands, process_appeal
 from src.workflow import run_commands
 
@@ -107,13 +108,24 @@ def _run_legacy():
             else:
                 print("No employees' final ratings changed")
 
+        grade_bands_path = input_dir / "grade_bands.csv"
+        grade_bands = load_grade_bands(grade_bands_path)
+        grade_order = list(grade_bands)
         promoted_employee_ids = select_promotions(
             employees,
             final_results,
             scores,
             eligibility,
             appraisal_cutoff_date,
+            grade_order=grade_order,
         )
+        promoted_grades = {
+            employee_id: next_grade_in_order(
+                employees[employee_id].grade,
+                grade_order,
+            )
+            for employee_id in promoted_employee_ids
+        }
         scaled_increment_rates = calculate_scaled_increment_rates(
             employees,
             final_results,
@@ -121,6 +133,8 @@ def _run_legacy():
             load_increment_budgets(input_dir / "budgets.csv"),
             promoted_employee_ids,
             appraisal_cutoff_date,
+            grade_bands=grade_bands,
+            new_grades=promoted_grades,
         )
 
         print(
@@ -163,6 +177,8 @@ def _run_legacy():
                 employee,
                 result["final_rating"],
                 appraisal_year,
+                grade_bands_path=grade_bands_path,
+                new_grade=promoted_grades.get(employee_id),
                 is_promotion=employee_id in promoted_employee_ids,
                 company_multiplier=company_multiplier,
                 increment_rate_override=scaled_increment_rates[employee_id],
@@ -184,6 +200,10 @@ def _run_legacy():
                 f"Rs.{compensation['revised_salary']}"
                 f" | Variable pay: Rs.{compensation['variable_pay']}"
             )
+
+        for employee_id, new_grade in promoted_grades.items():
+            employees[employee_id].grade = new_grade
+            employees[employee_id].months_in_grade = 0
 
     except (ValueError, OSError, KeyError) as error:
         print(f"INPUT OR SCORING ERROR: {error}")

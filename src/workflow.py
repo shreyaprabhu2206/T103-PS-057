@@ -12,7 +12,7 @@ from src.compensation import (
     calculate_scaled_increment_rates,
 )
 from src.official_data import INVALID_STATUSES, load_official_data
-from src.promotion import select_promotions
+from src.promotion import next_grade_in_order, select_promotions
 from src.reports import (
     distribution_rows,
     write_appeal_changes,
@@ -121,6 +121,7 @@ class AppraisalWorkflow:
         self.final_results = None
         self.compensation = {}
         self.promoted_employee_ids = set()
+        self.promoted_grades = {}
         self.distribution_output = []
         self.appeal_output = []
         self.print_number = 0
@@ -128,9 +129,10 @@ class AppraisalWorkflow:
         self.appeal_ids = set()
 
     def _load(self, parts, line_number):
-        if len(parts) != 6:
+        if len(parts) not in {6, 7}:
             raise ValueError(
-                "LOAD must specify employees, goals, ratings, bands, and units "
+                "LOAD must specify employees, goals, ratings, bands, units, "
+                "and optionally a competency catalog "
                 f"(line {line_number})"
             )
         if self.appraisal_year is None or self.company_multiplier is None:
@@ -142,9 +144,19 @@ class AppraisalWorkflow:
             _resolve_load_path(self.command_dir, filename)
             for filename in parts[1:]
         ]
+        if len(paths) < 5:
+            raise ValueError(
+                f"LOAD input filenames cannot be empty (line {line_number})"
+            )
+        catalog_path = (
+            paths[5]
+            if len(paths) == 6
+            else paths[2].with_name("competency_catalog.json")
+        )
         self.data = load_official_data(
             *paths[:5],
             appraisal_cutoff_date=self.cutoff_date,
+            competency_catalog_path=catalog_path,
         )
         self.grade_bands_path = paths[3]
 
@@ -180,7 +192,15 @@ class AppraisalWorkflow:
             self.scores,
             self.eligibility,
             self.cutoff_date,
+            grade_order=list(self.data[4]),
         )
+        self.promoted_grades = {
+            employee_id: next_grade_in_order(
+                employees[employee_id].grade,
+                self.data[4],
+            )
+            for employee_id in self.promoted_employee_ids
+        }
         scaled_rates = calculate_scaled_increment_rates(
             employees,
             self.final_results,
@@ -191,6 +211,7 @@ class AppraisalWorkflow:
             proration_through_cutoff=True,
             annualize_cost=True,
             grade_bands=self.data[4],
+            new_grades=self.promoted_grades,
         )
         self.compensation = {}
         for employee_id, result in self.final_results.items():
@@ -202,6 +223,7 @@ class AppraisalWorkflow:
                 result["final_rating"],
                 self.appraisal_year,
                 grade_bands_path=self.grade_bands_path,
+                new_grade=self.promoted_grades.get(employee_id),
                 is_promotion=employee_id in self.promoted_employee_ids,
                 company_multiplier=self.company_multiplier,
                 increment_rate_override=scaled_rates[employee_id],
@@ -372,7 +394,7 @@ class AppraisalWorkflow:
                 "promoted": str(
                     employee_id in self.promoted_employee_ids
                 ).lower(),
-                "new_grade": "",
+                "new_grade": self.promoted_grades.get(employee_id, ""),
                 "pip": str(compensation.get("on_pip", False)).lower(),
                 "status_code": status,
             })
@@ -472,6 +494,10 @@ class AppraisalWorkflow:
             self.output_dir / "appeal_changes.csv",
             self.appeal_output,
         )
+        for employee_id, new_grade in self.promoted_grades.items():
+            employee = self.data[0][employee_id]
+            employee.grade = new_grade
+            employee.months_in_grade = 0
         return self
 
 

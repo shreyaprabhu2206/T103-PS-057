@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from src.models import Employee
 from src.promotion import (
     check_promotion_eligibility,
+    next_grade_in_order,
     select_promotions,
 )
 
@@ -56,12 +57,12 @@ class TestPromotionEligibility(unittest.TestCase):
         self.assertFalse(result)
 
     def create_workflow_employee(
-        self, employee_id, business_unit, grade_start_date
+        self, employee_id, business_unit, grade_start_date, grade="G3"
     ):
         return Employee(
             employee_id=employee_id,
             business_unit=business_unit,
-            grade="G3",
+            grade=grade,
             basic_salary=30000,
             joining_date=date(2020, 1, 1),
             manager_id="M001",
@@ -155,6 +156,44 @@ class TestPromotionEligibility(unittest.TestCase):
         self.assertEqual(selected, {"E001"})
         self.assertEqual(employee.grade, "G3")
         self.assertEqual(employee.grade_start_date, original_grade_start_date)
+
+    def test_next_grade_follows_the_supplied_grade_band_order(self):
+        grade_order = ["G1", "G3", "G2", "G7"]
+        self.assertEqual(next_grade_in_order("G3", grade_order), "G2")
+        self.assertIsNone(next_grade_in_order("G7", grade_order))
+
+    def test_highest_grade_employee_is_not_selected_for_promotion(self):
+        appraisal_date = date(2026, 9, 30)
+        employees = {}
+        final_results = {}
+        scores = {}
+        eligibility = {}
+        for index in range(13):
+            employee_id = f"E{index:03d}"
+            grade = "G7" if index == 0 else "G6"
+            employees[employee_id] = self.create_workflow_employee(
+                employee_id,
+                "IT",
+                date(2023, 1, 1),
+                grade=grade,
+            )
+            final_results[employee_id] = {"final_rating": 5}
+            scores[employee_id] = {
+                "raw_score": 5.0 if index == 0 else 4.0 - index / 100
+            }
+            eligibility[employee_id] = "ELIGIBLE"
+
+        selected = select_promotions(
+            employees,
+            final_results,
+            scores,
+            eligibility,
+            appraisal_date,
+            grade_order=["G1", "G2", "G3", "G4", "G5", "G6", "G7"],
+        )
+
+        self.assertNotIn("E000", selected)
+        self.assertEqual(len(selected), 2)
 
 
 if __name__ == "__main__":

@@ -1,46 +1,38 @@
-# UML State Diagram
+# Implemented Command-Workflow State Diagram
 
-## Purpose
-
-The state diagram shows the different stages of the employee performance appraisal process. It explains how an appraisal moves from initial data entry to validation, score calculation, calibration and final compensation.
-
-## State Diagram
+The workflow reads non-comment commands in file order. Settings must precede
+`LOAD`; `RUN_APPRAISAL` requires loaded data. A valid appeal must be followed
+by a rerun of the affected unit or pool before another appeal or end-of-file.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> DataEntry
+    [*] --> ReadingCommands
 
-    DataEntry --> Validation
-    Validation --> DataEntry : Invalid data
-    Validation --> Scoring : Valid data
+    ReadingCommands --> ReadingCommands : blank line, comment, or appraisal settings
+    ReadingCommands --> DataLoaded : LOAD after required settings
+    DataLoaded --> DataLoaded : blank line or comment
+    DataLoaded --> AppraisalReady : RUN_APPRAISAL
 
-    Scoring --> EligibilityCheck
-    EligibilityCheck --> Excluded : Not eligible
-    EligibilityCheck --> Calibration : Eligible
+    AppraisalReady --> AppraisalReady : PRINT_DISTRIBUTION|ALL / append snapshot and write distribution.csv
+    AppraisalReady --> AppraisalReady : PRINT_LETTERS|ALL / write letters.csv
+    AppraisalReady --> AppraisalReady : invalid APPEAL / reject without applying changes
+    AppraisalReady --> AppealPending : valid APPEAL / apply requested manager-rating increases
 
-    Calibration --> FinalRating
-    Excluded --> FinalRating : Mark as excluded
+    AppealPending --> Recalibrating : RERUN_UNIT for the appealed employee's unit or pool
+    AppraisalReady --> Recalibrating : RERUN_UNIT without a pending valid appeal
+    Recalibrating --> AppraisalReady : recalculate scores, ratings, promotions, and compensation
+    Recalibrating --> AppraisalReady : record changed final ratings for the pending appeal
 
-    FinalRating --> Compensation
-    Compensation --> ReportGeneration
-    ReportGeneration --> Completed
+    AppraisalReady --> Finalizing : end of file with LOAD and RUN_APPRAISAL complete
+    Finalizing --> ReportsComplete : write appeal_changes.csv
+    ReportsComplete --> [*]
 
-    Completed --> [*]
+    ReadingCommands --> Error : invalid setting, command order, or input
+    DataLoaded --> Error : invalid command order or input
+    AppraisalReady --> Error : invalid rerun or command
+    AppealPending --> Error : end of file before required RERUN_UNIT
 ```
 
-## Explanation of States
-
-1. **Data Entry:** Employee details, goals, ratings and budget information are provided through CSV files.
-2. **Validation:** The system checks whether the input data is complete and follows the required rules.
-3. **Scoring:** Goal scores, competency scores and raw appraisal scores are calculated.
-4. **Eligibility Check:** The system checks whether an employee is eligible for the appraisal cycle.
-5. **Excluded:** Employees who do not meet eligibility conditions are excluded from bell-curve calibration.
-6. **Calibration:** Eligible employees are grouped and assigned final ratings using the bell-curve distribution.
-7. **Final Rating:** The employee's final appraisal rating is recorded.
-8. **Compensation:** Increment, revised salary and variable pay are calculated according to the applicable rules.
-9. **Report Generation:** The system prepares the final appraisal results.
-10. **Completed:** The appraisal process is finished.
-
-## Note
-
-This diagram represents the overall planned workflow of the system. Some stages may be implemented as Python functions rather than separate classes or independent software states.
+Each `PRINT_DISTRIBUTION|ALL` appends a numbered snapshot in command order.
+`PRINT_LETTERS|ALL` writes the current employee results. A rerun refreshes
+compensation after recalibration. Rejected appeals do not mutate ratings.

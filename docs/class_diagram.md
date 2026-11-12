@@ -1,96 +1,102 @@
-# UML Class Diagram
+# Implemented Class and Module Diagram
 
-## Purpose
-
-The class diagram represents the main data models and processing components of the Performance Appraisal and Bell-Curve Normalisation system. It shows how employee details, goals, ratings, appraisal scores, calibration and compensation are connected.
-
-## Class Diagram
+The diagram distinguishes the implemented data classes and workflow class from
+the processing modules. Scores, calibration results, and compensation results
+are dictionaries in the implementation; they are not separate model classes.
 
 ```mermaid
 classDiagram
     class Employee {
-        +String employee_id
-        +String name
-        +String business_unit
-        +String grade
-        +float basic_salary
-        +Date joining_date
-        +float previous_final_rating
+        +employee_id: str
+        +business_unit: str
+        +grade: str
+        +basic_salary: float
+        +joining_date: date
+        +manager_id: str
+        +current_role_band: str
+        +grade_start_date: date
+        +previous_final_rating: Optional[int]
+        +months_in_grade: Optional[int]
     }
 
     class Goal {
-        +String goal_id
-        +String employee_id
-        +String description
-        +float weight
+        +employee_id: str
+        +goal_id: str
+        +goal_name: str
+        +weight: int
     }
 
     class Rating {
-        +String employee_id
-        +String item_id
-        +String item_type
-        +float self_rating
-        +float manager_rating
+        +employee_id: str
+        +item_type: str
+        +item_id: str
+        +self_rating: int
+        +manager_rating: int
     }
 
-    class AppraisalResult {
-        +String employee_id
-        +float goal_score
-        +float competency_score
-        +float raw_score
-        +int final_rating
+    class AppraisalWorkflow {
+        +commands_path: Path
+        +output_dir: Path
+        +execute()
+        -_load(parts, line_number)
+        -_run_appraisal()
+        -_appeal(parts, line_number)
+        -_rerun_unit(parts, line_number)
+        -_refresh_compensation()
     }
 
-    class Validation {
-        +validate_employees()
-        +validate_goals()
-        +validate_ratings()
+    class MainModule {
+        <<module>>
+        +main()
+    }
+    class OfficialDataModule {
+        <<module>>
+        +load_official_data(...)
+    }
+    class ScoringModule {
+        <<module>>
+        +calculate_raw_scores(...)
+    }
+    class CalibrationModule {
+        <<module>>
+        +get_eligibility_results(...)
+        +distribute_ratings(...)
+        +build_distribution_pools(...)
+    }
+    class AppealsModule {
+        <<module>>
+        +process_appeal(...)
+    }
+    class PromotionModule {
+        <<module>>
+        +select_promotions(...)
+    }
+    class CompensationModule {
+        <<module>>
+        +calculate_scaled_increment_rates(...)
+        +calculate_compensation(...)
+    }
+    class ReportsModule {
+        <<module>>
+        +write_distribution(...)
+        +write_letters(...)
+        +write_appeal_changes(...)
     }
 
-    class Scoring {
-        +calculate_goal_score()
-        +calculate_competency_score()
-        +calculate_raw_score()
-    }
-
-    class Calibration {
-        +check_eligibility()
-        +pool_small_business_units()
-        +assign_final_ratings()
-    }
-
-    class Compensation {
-        +calculate_increment()
-        +calculate_revised_salary()
-        +calculate_variable_pay()
-    }
-
-    Employee "1" --> "0..*" Goal : has
-    Employee "1" --> "0..*" Rating : receives
-    Employee "1" --> "0..1" AppraisalResult : gets
-    Goal ..> Rating : rated through
-    Validation ..> Employee : validates
-    Validation ..> Goal : validates
-    Validation ..> Rating : validates
-    Scoring ..> Rating : uses
-    Scoring ..> Goal : uses
-    Scoring ..> AppraisalResult : creates
-    Calibration ..> AppraisalResult : normalises
-    Compensation ..> AppraisalResult : uses
-    Compensation ..> Employee : uses
+    Employee "1" --> "0..*" Goal : assigned
+    Employee "1" --> "0..*" Rating : has
+    MainModule ..> AppraisalWorkflow : starts via run_commands
+    AppraisalWorkflow ..> OfficialDataModule : LOAD
+    AppraisalWorkflow ..> ScoringModule : calculate and refresh scores
+    AppraisalWorkflow ..> CalibrationModule : initial and unit reruns
+    AppraisalWorkflow ..> AppealsModule : validate and apply appeal
+    AppraisalWorkflow ..> PromotionModule : select candidates
+    AppraisalWorkflow ..> CompensationModule : recalculate pay
+    AppraisalWorkflow ..> ReportsModule : write CSV reports
 ```
 
-## Explanation
-
-1. **Employee:** Stores employee details such as ID, name, business unit, grade, salary and joining date.
-2. **Goal:** Stores the goals assigned to each employee and their weights.
-3. **Rating:** Stores self-ratings and manager ratings for goals and competencies.
-4. **AppraisalResult:** Stores the calculated goal score, competency score, raw score and final rating.
-5. **Validation:** Checks whether the input data is complete and follows the required rules.
-6. **Scoring:** Calculates goal scores, competency scores and the final raw appraisal score.
-7. **Calibration:** Applies eligibility rules and bell-curve normalisation to assign final ratings.
-8. **Compensation:** Calculates increments, revised salaries and variable pay based on appraisal results.
-
-## Note
-
-This is the design-level class diagram. Some components, such as `AppraisalResult` and the processing classes, represent planned logical responsibilities and may be implemented as Python functions or modules rather than separate classes.
+`commands.txt` is a line-oriented input read by `AppraisalWorkflow.execute()`;
+it is not represented as a Python data class. The workflow processes settings,
+`LOAD`, `RUN_APPRAISAL`, `APPEAL`, `RERUN_UNIT`, and print commands in file
+order. There is no promoted-grade mapping in the official materials, so a
+selected promotion does not change grade or grade tenure.

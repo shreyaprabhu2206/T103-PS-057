@@ -65,6 +65,20 @@ class TestScoring(unittest.TestCase):
         )
         self.assertAlmostEqual(result["E001"]["raw_score"], 4.57)
 
+    def test_self_ratings_are_retained_but_do_not_change_raw_scores(self):
+        baseline = calculate_raw_scores(
+            self.employees, self.goals, self.ratings
+        )["E001"]
+        for rating in self.ratings:
+            rating.self_rating = 1
+
+        updated = calculate_raw_scores(
+            self.employees, self.goals, self.ratings
+        )["E001"]
+
+        self.assertEqual(updated, baseline)
+        self.assertTrue(all(rating.self_rating == 1 for rating in self.ratings))
+
     def test_missing_competency_ratings(self):
         ratings_without_competencies = [
             rating for rating in self.ratings

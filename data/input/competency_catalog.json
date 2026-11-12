@@ -1,0 +1,17 @@
+{
+  "status": "PROVISIONAL",
+  "provenance": "The IDs below were observed in the supplied ratings.csv. The sample observations are not proof that this catalog is complete; confirm it with faculty.",
+  "competency_ids": [
+    "C1_COMMUNICATION",
+    "C2_OWNERSHIP",
+    "C3_COLLABORATION",
+    "C4_CUSTOMER_FOCUS"
+  ],
+  "default_required_competencies": [
+    "C1_COMMUNICATION",
+    "C2_OWNERSHIP",
+    "C3_COLLABORATION",
+    "C4_CUSTOMER_FOCUS"
+  ],
+  "employee_required_competencies": {}
+}

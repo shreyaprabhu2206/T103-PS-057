@@ -1,4 +1,5 @@
 import csv
+import json
 import tempfile
 import unittest
 from datetime import date
@@ -44,14 +45,14 @@ class TestOfficialData(unittest.TestCase):
                 ],
                 [
                     {
-                        "emp_id": "EMP-0001", "name": "One", "unit": "IT",
+                        "emp_id": "EMP-0001", "name": "One", "unit": "ENGINEERING",
                         "grade": "G3", "basic_salary": "30000.00",
                         "date_of_joining": "2020-01-01", "manager_id": "M1",
                         "months_in_grade": "36", "previous_year_rating": "3",
                         "role_band": "IC",
                     },
                     {
-                        "emp_id": "EMP-0002", "name": "Two", "unit": "IT",
+                        "emp_id": "EMP-0002", "name": "Two", "unit": "ENGINEERING",
                         "grade": "G3", "basic_salary": "30000.00",
                         "date_of_joining": "2020-01-01", "manager_id": "M1",
                         "months_in_grade": "36", "previous_year_rating": "3",
@@ -93,7 +94,18 @@ class TestOfficialData(unittest.TestCase):
                 folder,
                 "units.csv",
                 ["unit", "increment_budget_annual", "unit_head"],
-                [{"unit": "IT", "increment_budget_annual": "500000", "unit_head": "M1"}],
+                [{"unit": "ENGINEERING", "increment_budget_annual": "500000", "unit_head": "M1"}],
+            )
+            competency_catalog = folder / "competency_catalog.json"
+            competency_catalog.write_text(
+                json.dumps({
+                    "status": "PROVISIONAL",
+                    "provenance": "Test fixture",
+                    "competency_ids": ["C1"],
+                    "default_required_competencies": ["C1"],
+                    "employee_required_competencies": {},
+                }),
+                encoding="utf-8",
             )
 
             loaded = load_official_data(
@@ -103,6 +115,7 @@ class TestOfficialData(unittest.TestCase):
                 bands,
                 units,
                 date(2026, 9, 30),
+                competency_catalog_path=competency_catalog,
             )
 
         loaded_employees, _, loaded_ratings, statuses, loaded_bands, budgets = loaded
@@ -114,7 +127,7 @@ class TestOfficialData(unittest.TestCase):
             "band_min": 18000.0,
             "band_max": 30000.0,
         })
-        self.assertEqual(budgets, {"IT": 500000.0})
+        self.assertEqual(budgets, {"ENGINEERING": 500000.0})
         self.assertEqual(loaded_employees["EMP-0001"].months_in_grade, 36)
 
     def test_commands_cannot_run_appraisal_before_load(self):
@@ -142,7 +155,26 @@ class TestOfficialAppeals(unittest.TestCase):
             Rating("EMP-0001", "GOAL", "G1", 3, 3),
             Rating("EMP-0001", "COMPETENCY", "C1", 3, 3),
         ]
+        for number in range(2, 11):
+            employee_id = f"EMP-{number:04d}"
+            employee = Employee(
+                employee_id, "IT", "G3", 30000, date(2020, 1, 1), "M1",
+                "IC", date(2020, 1, 1),
+            )
+            self.employees[employee_id] = employee
+            self.goals.append(
+                Goal(employee_id, f"G{number}", "Goal", 100)
+            )
+            self.ratings.extend([
+                Rating(employee_id, "GOAL", f"G{number}", 3, 3),
+                Rating(employee_id, "COMPETENCY", "C1", 3, 3),
+            ])
         self.eligibility = {"EMP-0001": "ELIGIBLE"}
+        self.eligibility.update({
+            employee_id: "ELIGIBLE"
+            for employee_id in self.employees
+            if employee_id != "EMP-0001"
+        })
         self.scores = calculate_raw_scores(
             self.employees, self.goals, self.ratings
         )

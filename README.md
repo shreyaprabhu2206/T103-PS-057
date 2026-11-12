@@ -13,7 +13,52 @@ Domain: Enterprise / HR – Performance. Build the back-end engine a 500-person 
 | `ratings.csv` | Self and manager ratings per goal and competency | 1621 |
 | `grade_bands.csv` | Monthly basic band per grade | 7 |
 | `units.csv` | Annual increment-cost budget per unit | 6 |
+| `competency_catalog.json` | Provisional competency IDs and required lists | 4 IDs |
 | `commands.txt` | Command file; process strictly in file order. | 17 |
+
+## Developer setup and usage
+
+### Requirements
+
+- Python 3.10 or later
+- Git
+- No third-party Python packages are required.
+
+Run the following commands from the project root. On Windows PowerShell:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+python -B main.py --commands commands.txt --output-dir output
+python -B -m unittest discover -v
+```
+
+On macOS or Linux, activate the virtual environment with
+`source .venv/bin/activate` instead of the PowerShell activation command.
+The command file loads the official CSV files from `data/input/`. If `LOAD`
+does not name a competency catalog, the workflow looks for
+`competency_catalog.json` beside `ratings.csv`. The application writes
+`letters.csv`, `distribution.csv`, and `appeal_changes.csv` to `output/`.
+
+The supplied competency catalog is explicitly **provisional**: it lists the
+four IDs observed in `ratings.csv`, which does not prove that the catalog is
+complete. It supports a default required list and employee-specific
+overrides. A faculty-confirmed catalog is still needed before treating those
+requirements as authoritative.
+
+The official materials do not specify promotion grade progression or tenure
+reset behavior. For this implementation only, the configurable assumption is
+that a selected promotion advances to the next grade in `grade_bands.csv`
+row order, excludes employees already at the last grade, and resets
+`months_in_grade` to zero. This assumption is not faculty-approved. The
+additional 5% promotion increment is included once in budget scaling and
+compensation.
+
+If alphabetical pooling reaches the last unit and the combined pool still
+contains fewer than 10 eligible employees, the implementation processes it
+as a residual pool using the normal floor bucket sizes and puts the remainder
+in rating 3. This is a fallback assumption, not an official rule.
 
 Row counts exclude the header line (CSV) and comment lines (commands.txt).
 
@@ -52,7 +97,7 @@ Conventions: dates `YYYY-MM-DD`; timestamps `YYYY-MM-DD HH:MM:SS` (24h, IST, no 
 | `emp_id` | string |  | employees.csv | FK |
 | `item_type` | enum |  | GOAL/COMPETENCY |  |
 | `item_id` | string |  | goal_id or competency code |  |
-| `self_rating` | integer |  | 1–5 | Gap report only |
+| `self_rating` | integer |  | 1–5 | Retained; not used in raw score |
 | `manager_rating` | integer |  | 1–5 (one 6 and one blank planted) | Used for the raw score |
 
 ### `grade_bands.csv`
@@ -74,6 +119,8 @@ Conventions: dates `YYYY-MM-DD`; timestamps `YYYY-MM-DD HH:MM:SS` (24h, IST, no 
 ### General notes
 
 - Where the brief is silent: variable pay = target% x annual basic (12 x current basic) x rating multiplier x company multiplier; pooled units are reported under the pool name 'HR+LEGAL'; percentages scaled by budget are floored to 1 decimal.
+- A separate rating-gap report is not one of the three required outputs and
+  is not generated. No gap formula or additional report schema is assumed.
 
 ## Command file format
 
@@ -83,7 +130,7 @@ Conventions: dates `YYYY-MM-DD`; timestamps `YYYY-MM-DD HH:MM:SS` (24h, IST, no 
 |---|---|---|
 | `SET_APPRAISAL_YEAR` | `year|cutoff_date` | Eligibility cut-off (joiners after it are NOT_ELIGIBLE; 1 Apr–cut-off pro-rated) |
 | `SET_COMPANY_MULTIPLIER` | `multiplier` | Company multiplier on variable pay |
-| `LOAD` | `employees|goals|ratings|bands|units` | Load master data |
+| `LOAD` | `employees|goals|ratings|bands|units[|competency_catalog]` | Load master data and, optionally, an explicit competency catalog |
 | `RUN_APPRAISAL` | `` | Compute raw scores, distribution, increments, promotions, variable pay for all units |
 | `APPEAL` | `appeal_id|emp_id|goal_id|new_rating[|goal_id|new_rating]` | Raise manager rating on at most 2 goals by at most 1 point each |
 | `RERUN_UNIT` | `unit` | Recompute the unit (or its pool) after an appeal and report changed ratings |
@@ -107,6 +154,26 @@ Every edge case from the brief is planted at the location given. Line numbers co
 - **Extra: invalid appeals** — commands.txt line 11 APL-03 raises a goal by 2 points → reject; line 13 APL-04 touches 3 goals → reject; APL-02 and APL-05 are valid single-goal +1 appeals
 - **Extra: bad rating rows** — ratings.csv line 103 duplicates line 102 → use once; line 872 manager_rating 6 → invalid (treat employee as INVALID_RATING and exclude); line 876 blank manager_rating → INVALID_RATING
 - **Extra: grade cap lump sum** — Several employees have basic within 5% of band_max; a 10% or 14% increment must be capped at band_max with the excess as a one-time lump sum
+
+## Week 3 compliance summary
+
+- **Implemented and tested:** BR-01–BR-36 have meaningful implementation and
+  expected-result tests. BR-07 validation uses the explicit catalog
+  configuration. See the [BR-ID compliance matrix](docs/business_rules.md#week-3-compliance-matrix).
+- **Implementation assumptions, not official rules:** provisional sample-derived
+  competency catalog; next-grade promotion in grade-band file order, no
+  promotion from the highest grade, and tenure reset to zero; residual-pool
+  fallback for a final pool smaller than 10. Tests cover each assumption.
+- **Not required / not implemented:** a separate rating-gap report. The three
+  required CSV schemas are unchanged.
+- **Still requiring faculty confirmation:** the complete competency catalog
+  and required IDs per employee, official promotion-grade and tenure-reset
+  policy, and the intended behavior for a final pool below 10. The current
+  assumptions do not claim faculty approval.
+
+The official sample pack does not provide expected output files; verification
+is based on stated rules, actual input data, and planted scenarios rather than
+invented expected outputs.
 
 ## What is NOT in this pack
 

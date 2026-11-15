@@ -2,7 +2,9 @@ import csv
 import json
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from datetime import date
+from io import StringIO
 from pathlib import Path
 
 from src.appeals import process_appeal
@@ -20,7 +22,7 @@ from src.reports import (
     write_letters,
 )
 from src.scoring import calculate_raw_scores
-from src.workflow import run_commands
+from src.workflow import AppraisalWorkflow, run_commands
 
 
 class TestOfficialData(unittest.TestCase):
@@ -214,6 +216,106 @@ class TestOfficialAppeals(unittest.TestCase):
                 new_ratings={"G1": 5},
             )
         self.assertEqual(self.ratings[0].manager_rating, 3)
+
+
+class TestPendingAppealWorkflow(unittest.TestCase):
+    def _setup_commands(self):
+        project_dir = Path(__file__).resolve().parents[1]
+        input_dir = project_dir / "data" / "input"
+        load_command = "|".join([
+            "LOAD",
+            str(input_dir / "employees.csv"),
+            str(input_dir / "goals.csv"),
+            str(input_dir / "ratings.csv"),
+            str(input_dir / "grade_bands.csv"),
+            str(input_dir / "units.csv"),
+        ])
+        setup_commands = [
+            "SET_APPRAISAL_YEAR|2026|2026-09-30",
+            "SET_COMPANY_MULTIPLIER|1.05",
+            load_command,
+        ]
+        return setup_commands
+
+    def test_run_appraisal_is_rejected_until_appeal_rerun_completes(self):
+        setup_commands = self._setup_commands()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            folder = Path(temp_dir)
+            baseline_commands = folder / "baseline_commands.txt"
+            baseline_commands.write_text(
+                "\n".join(setup_commands + ["RUN_APPRAISAL"]) + "\n",
+                encoding="utf-8",
+            )
+            baseline = run_commands(
+                baseline_commands, folder / "baseline_output"
+            )
+
+            commands_path = folder / "commands.txt"
+            commands_path.write_text(
+                "\n".join(setup_commands + [
+                    "RUN_APPRAISAL",
+                    "APPEAL|APL-01|EMP-0008|EMP-0008-G1|5|EMP-0008-G2|5",
+                    "RUN_APPRAISAL",
+                    "RERUN_UNIT|ENGINEERING",
+                    "PRINT_LETTERS|ALL",
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            output = folder / "output"
+            stdout = StringIO()
+            with redirect_stdout(stdout):
+                workflow = run_commands(commands_path, output)
+
+            self.assertIn("RUN_APPRAISAL rejected", stdout.getvalue())
+            self.assertIn("RERUN_UNIT|ENGINEERING", stdout.getvalue())
+            self.assertIsNone(workflow.pending_appeal)
+
+            expected_changes = {
+                (employee_id, before["final_rating"],
+                 workflow.final_results[employee_id]["final_rating"])
+                for employee_id, before in baseline.final_results.items()
+                if before["final_rating"]
+                != workflow.final_results[employee_id]["final_rating"]
+            }
+            self.assertEqual(len(expected_changes), 2)
+
+            with (output / "appeal_changes.csv").open(
+                newline="", encoding="utf-8"
+            ) as file:
+                actual_rows = list(csv.DictReader(file))
+            actual_changes = {
+                (row["emp_id"], int(row["rating_before"]),
+                 int(row["rating_after"]))
+                for row in actual_rows
+            }
+            self.assertEqual(actual_changes, expected_changes)
+            self.assertTrue(all(
+                row["appeal_id"] == "APL-01"
+                and row["unit_or_pool"] == "ENGINEERING"
+                for row in actual_rows
+            ))
+
+    def test_pending_appeal_requires_rerun_of_affected_unit(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            folder = Path(temp_dir)
+            commands_path = folder / "commands.txt"
+            commands_path.write_text(
+                "\n".join(self._setup_commands() + [
+                    "RUN_APPRAISAL",
+                    "APPEAL|APL-01|EMP-0008|EMP-0008-G1|5|EMP-0008-G2|5",
+                    "RERUN_UNIT|SALES",
+                ]) + "\n",
+                encoding="utf-8",
+            )
+            workflow = AppraisalWorkflow(commands_path, folder / "output")
+
+            with self.assertRaisesRegex(
+                ValueError, r"RERUN_UNIT\|ENGINEERING is required"
+            ):
+                workflow.execute()
+
+            self.assertEqual(workflow.pending_appeal["unit"], "ENGINEERING")
 
 
 class TestOfficialBudgetsAndReports(unittest.TestCase):

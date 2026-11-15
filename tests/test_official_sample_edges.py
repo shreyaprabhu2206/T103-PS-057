@@ -169,6 +169,18 @@ class TestOfficialSampleEdgeCases(unittest.TestCase):
                     }[compensation["final_rating"]],
                 )
 
+        for employee_id, employee in self.workflow.data[0].items():
+            if employee_id not in self.workflow.promoted_employee_ids:
+                with self.subTest(employee_id=employee_id):
+                    self.assertEqual(
+                        employee.months_in_grade,
+                        int(
+                            self.source_employees[employee_id][
+                                "months_in_grade"
+                            ]
+                        ),
+                    )
+
     def test_ec6_appeal_changes_top_ten_percent_boundary(self):
         def ids_for(print_no, rating):
             return {
@@ -222,6 +234,66 @@ class TestOfficialSampleEdgeCases(unittest.TestCase):
         for unit, annual_cost in costs.items():
             with self.subTest(unit=unit):
                 self.assertLessEqual(annual_cost, budgets[unit] + 0.01)
+
+    def test_letters_report_matches_all_final_workflow_fields(self):
+        employees = self.workflow.data[0]
+        for employee_id, row in self.letters_by_id.items():
+            employee = employees[employee_id]
+            result = self.workflow.final_results[employee_id]
+            score = self.workflow.scores.get(employee_id, {})
+            compensation = self.workflow.compensation.get(employee_id, {})
+            status = self.workflow.data[3].get(employee_id)
+            if status is None:
+                status = (
+                    "OK"
+                    if self.workflow.eligibility[employee_id] == "ELIGIBLE"
+                    else "NOT_ELIGIBLE"
+                )
+            final_rating = result["final_rating"]
+            expected = {
+                "emp_id": employee_id,
+                "unit": employee.business_unit,
+                "eligible": str(status == "OK").lower(),
+                "raw_score": (
+                    f"{score['raw_score']:.2f}" if score else ""
+                ),
+                "goal_score": (
+                    f"{score['goal_score']:.2f}" if score else ""
+                ),
+                "final_rating": (
+                    "" if final_rating is None else str(final_rating)
+                ),
+                "increment_pct": (
+                    f"{compensation['increment_rate'] * 100:.1f}"
+                    if compensation else ""
+                ),
+                "pro_rated": (
+                    str(compensation["proration"] < 1).lower()
+                    if compensation else "false"
+                ),
+                "revised_basic": (
+                    f"{compensation['revised_salary']:.2f}"
+                    if compensation else ""
+                ),
+                "lump_sum": (
+                    f"{compensation['lump_sum']:.2f}"
+                    if compensation else ""
+                ),
+                "variable_payout": (
+                    f"{compensation['variable_pay']:.2f}"
+                    if compensation else ""
+                ),
+                "promoted": str(
+                    employee_id in self.workflow.promoted_employee_ids
+                ).lower(),
+                "new_grade": self.workflow.promoted_grades.get(
+                    employee_id, ""
+                ),
+                "pip": str(compensation.get("on_pip", False)).lower(),
+                "status_code": status,
+            }
+            with self.subTest(employee_id=employee_id):
+                self.assertEqual(row, expected)
 
     def test_ec8_goal_weights_99_and_101_are_invalid(self):
         statuses = self.workflow.data[3]
@@ -299,11 +371,12 @@ class TestOfficialSampleEdgeCases(unittest.TestCase):
             )
             for row in self.letters
         ))
-        self.assertEqual(len(self.letters), len(self.workflow.data[0]))
+        self.assertEqual(len(self.letters), 180)
         self.assertEqual(
             [row["emp_id"] for row in self.letters],
             sorted(row["emp_id"] for row in self.letters),
         )
+        self.assertEqual(len(self.distribution), 50)
         self.assertEqual(
             self.letter_headers,
             [

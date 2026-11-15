@@ -8,7 +8,7 @@ This glossary explains the important terms used in the project. It provides a co
 |---|---|
 | Performance Appraisal | A process used by an organisation to evaluate an employee's performance over a particular period. |
 | Employee ID | A unique identification number assigned to each employee. |
-| Business Unit (BU) | A department or division within an organisation, such as IT, Finance or HR. |
+| Business Unit (BU) | A department or division within an organisation. Sample units include ENGINEERING, FINANCE, HR, LEGAL, OPERATIONS and SALES. |
 | Grade | The level assigned to an employee based on their position and responsibilities. In this project, grades range from G1 to G7. |
 | Basic Salary | The fixed salary amount paid to an employee before additional benefits and variable payments. |
 | Goal | A target or task assigned to an employee that is used to measure their work performance. |
@@ -54,4 +54,5 @@ This glossary explains the important terms used in the project. It provides a co
 
 ---
 
-**Document Status:** Prepared for the Week 1 design documentation.
+**Document Status:** Maintained for the Week 3/4 submission. Unconfirmed policy
+values and assumptions are tracked in the [decision log](decision_log.md).

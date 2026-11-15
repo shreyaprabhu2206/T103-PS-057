@@ -1,7 +1,7 @@
 
 import csv
 from datetime import date
-from math import ceil, floor
+from math import ceil, floor, isfinite
 from pathlib import Path
 
 
@@ -98,6 +98,10 @@ def load_increment_budgets(path):
             except (TypeError, ValueError):
                 raise ValueError(
                     f"{business_unit}: increment budget must be numeric"
+                )
+            if not isfinite(budget):
+                raise ValueError(
+                    f"{business_unit}: increment budget must be finite"
                 )
             if budget < 0:
                 raise ValueError(
@@ -332,7 +336,12 @@ def load_grade_bands(path):
                     f"{grade}: band_min and band_max must be numeric"
                 )
 
-            if band_min <= 0 or band_max < band_min:
+            if (
+                not isfinite(band_min)
+                or not isfinite(band_max)
+                or band_min <= 0
+                or band_max < band_min
+            ):
                 raise ValueError(f"{grade}: invalid salary band limits")
 
             bands[grade] = {

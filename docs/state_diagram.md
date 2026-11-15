@@ -13,15 +13,19 @@ stateDiagram-v2
     DataLoaded --> DataLoaded : blank line or comment
     DataLoaded --> AppraisalReady : RUN_APPRAISAL
 
+    AppraisalReady --> AppraisalReady : RUN_APPRAISAL / recompute when no appeal is pending
     AppraisalReady --> AppraisalReady : PRINT_DISTRIBUTION|ALL / append snapshot and write distribution.csv
     AppraisalReady --> AppraisalReady : PRINT_LETTERS|ALL / write letters.csv
     AppraisalReady --> AppraisalReady : invalid APPEAL / reject without applying changes
-    AppraisalReady --> AppealPending : valid APPEAL / apply requested manager-rating increases
+    AppraisalReady --> AppealPending : valid APPEAL / apply increases, preserve prior results, mark affected unit
 
-    AppealPending --> Recalibrating : RERUN_UNIT for the appealed employee's unit or pool
+    AppealPending --> AppealPending : RUN_APPRAISAL / reject; retain pre-appeal baseline
+    AppealPending --> AppealPending : PRINT_DISTRIBUTION|ALL or PRINT_LETTERS|ALL / write current pre-rerun results
+    AppealPending --> Recalibrating : RERUN_UNIT for the appealed employee's unit
+    AppealPending --> Error : RERUN_UNIT for a different unit
+    AppealPending --> Error : APPEAL before required rerun
     AppraisalReady --> Recalibrating : RERUN_UNIT without a pending valid appeal
-    Recalibrating --> AppraisalReady : recalculate scores, ratings, promotions, and compensation
-    Recalibrating --> AppraisalReady : record changed final ratings for the pending appeal
+    Recalibrating --> AppraisalReady : successful rerun recalculates scores, ratings, promotions and compensation; records all changed ratings and clears pending appeal
 
     AppraisalReady --> Finalizing : end of file with LOAD and RUN_APPRAISAL complete
     Finalizing --> ReportsComplete : write appeal_changes.csv
@@ -35,4 +39,8 @@ stateDiagram-v2
 
 Each `PRINT_DISTRIBUTION|ALL` appends a numbered snapshot in command order.
 `PRINT_LETTERS|ALL` writes the current employee results. A rerun refreshes
-compensation after recalibration. Rejected appeals do not mutate ratings.
+compensation after recalibration. A pending appeal keeps the last completed
+ratings as its comparison baseline; `RUN_APPRAISAL` is rejected until
+`RERUN_UNIT` is run for the affected unit. The pending appeal is cleared only
+after the rerun and compensation refresh succeed. Rejected appeals do not
+mutate ratings.

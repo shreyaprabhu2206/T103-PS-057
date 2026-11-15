@@ -4,6 +4,46 @@ Prepared by 10 SECONDS for Team T103.
 
 Domain: Enterprise / HR – Performance. Build the back-end engine a 500-person company's HR team uses to collect goal and competency ratings, normalise manager scores into a forced distribution per business unit, assign final ratings and compute increments, promotions and variable pay. Command-file driven; no UI.
 
+## Problem statement
+
+The appraisal process needs a repeatable way to validate employee inputs,
+combine goal and competency ratings, normalize scores within business units,
+and calculate compensation within unit budgets. PS-057 implements that
+workflow as a command-file-driven backend and records the results in CSV
+reports.
+
+## Objectives
+
+- Validate employee, goal, rating, grade-band, competency, and budget inputs.
+- Calculate manager-based goal, competency, and raw scores.
+- Apply eligibility, small-unit pooling, and bell-curve rating distribution.
+- Process appeals and recalibrate affected units or pools.
+- Calculate prorated increments, promotions, variable pay, and budget scaling.
+- Generate the required letters, distribution, and appeal-change reports.
+
+## Technologies
+
+- Python 3.10 or later; standard library only.
+- CSV and JSON input/output.
+- `unittest` for automated tests.
+- No user interface or third-party runtime dependency.
+
+## Project structure
+
+```text
+main.py                 Application entry point
+src/                    Data loading, scoring, calibration, compensation,
+                        promotions, appeals, workflow, and report modules
+tests/                  Unit, integration, and official-sample edge tests
+docs/                   Business rules, design, diagrams, glossary, decision log
+data/input/             Project input data and command settings
+official_sample_data_pack/
+                        Reference copy of the supplied sample data
+output/                 Generated CSV reports
+commands.txt            Ordered official sample workflow
+requirements.txt        Python version note; no third-party packages
+```
+
 ## Files
 
 | File | What it holds | Rows |
@@ -47,13 +87,16 @@ complete. It supports a default required list and employee-specific
 overrides. A faculty-confirmed catalog is still needed before treating those
 requirements as authoritative.
 
-The official materials do not specify promotion grade progression or tenure
-reset behavior. For this implementation only, the configurable assumption is
-that a selected promotion advances to the next grade in `grade_bands.csv`
-row order, excludes employees already at the last grade, and resets
-`months_in_grade` to zero. This assumption is not faculty-approved. The
-additional 5% promotion increment is included once in budget scaling and
-compensation.
+The official clarification confirms that a successful promotion resets
+`months_in_grade` to zero; employees not promoted retain their existing value.
+Promotion grade progression remains unconfirmed. The current working
+assumption is to advance to the next grade in `grade_bands.csv` row order and
+exclude employees already at the last grade; this is not an official rule.
+Grade-band minimum and maximum values and the intended company multiplier are
+also awaiting confirmation. The current sample command supplies a multiplier
+of `1.05` in root `commands.txt` and `data/input/commands.csv`; these sample
+inputs are not evidence of official policy. The additional 5% promotion
+increment is included once in budget scaling and compensation.
 
 If alphabetical pooling reaches the last unit and the combined pool still
 contains fewer than 10 eligible employees, the implementation processes it
@@ -119,8 +162,31 @@ Conventions: dates `YYYY-MM-DD`; timestamps `YYYY-MM-DD HH:MM:SS` (24h, IST, no 
 ### General notes
 
 - Where the brief is silent: variable pay = target% x annual basic (12 x current basic) x rating multiplier x company multiplier; pooled units are reported under the pool name 'HR+LEGAL'; percentages scaled by budget are floored to 1 decimal.
-- A separate rating-gap report is not one of the three required outputs and
-  is not generated. No gap formula or additional report schema is assumed.
+- No separate rating-gap report is generated. Original Rule 1 says self
+  ratings are only for the gap report, but the current three-report output
+  contract does not define a gap-report schema or formula. The implementation
+  retains self-ratings and excludes them from raw-score calculations; whether
+  a separate gap report is required remains an open scope question.
+
+## Business-rule summary
+
+- Manager ratings drive scores: goal score is weighted, competency score is
+  averaged, and raw score is 70% goal plus 30% competency.
+- Employees joining after the configured 30 September cutoff are excluded.
+  Eligible joiners from 1 April through the cutoff receive completed-month
+  proration.
+- Rating buckets are 10%, 20%, 50%, 15%, and 5% for ratings 5 through 1.
+  Fractional bucket counts are floored and any remainder goes to rating 3.
+- Rating-based increments are 14%, 10%, 6%, 2%, and 0%; salary rounding,
+  grade caps, lump sums, salary floor, and budget scaling are applied by the
+  compensation workflow.
+- Promotions require rating 5 with 24 months in grade or rating 4 with 36
+  months; the unit limit is ceil(8%) and eligible candidates are ranked by
+  raw score. A successful promotion resets `months_in_grade` to zero.
+- Rating 1 or two consecutive rating 2 results in PIP; PIP employees receive
+  no increment or variable pay.
+- Appeals may increase one or two assigned goals by at most one point each;
+  a valid appeal is followed by a unit/pool rerun.
 
 ## Command file format
 
@@ -131,11 +197,15 @@ Conventions: dates `YYYY-MM-DD`; timestamps `YYYY-MM-DD HH:MM:SS` (24h, IST, no 
 | `SET_APPRAISAL_YEAR` | `year|cutoff_date` | Eligibility cut-off (joiners after it are NOT_ELIGIBLE; 1 Apr–cut-off pro-rated) |
 | `SET_COMPANY_MULTIPLIER` | `multiplier` | Company multiplier on variable pay |
 | `LOAD` | `employees|goals|ratings|bands|units[|competency_catalog]` | Load master data and, optionally, an explicit competency catalog |
-| `RUN_APPRAISAL` | `` | Compute raw scores, distribution, increments, promotions, variable pay for all units |
+| `RUN_APPRAISAL` | `` | Compute raw scores, distribution, increments, promotions, and variable pay for all units; rejected while an accepted appeal rerun is pending |
 | `APPEAL` | `appeal_id|emp_id|goal_id|new_rating[|goal_id|new_rating]` | Raise manager rating on at most 2 goals by at most 1 point each |
 | `RERUN_UNIT` | `unit` | Recompute the unit (or its pool) after an appeal and report changed ratings |
 | `PRINT_DISTRIBUTION` | `ALL` | Write distribution.csv |
 | `PRINT_LETTERS` | `ALL` | Write letters.csv |
+
+After an accepted `APPEAL`, run `RERUN_UNIT` for the affected unit before
+another appeal or appraisal. An intervening `RUN_APPRAISAL` is rejected and
+does not replace the pre-appeal comparison baseline.
 
 ## Planted scenarios
 
@@ -157,19 +227,34 @@ Every edge case from the brief is planted at the location given. Line numbers co
 
 ## Week 3 compliance summary
 
-- **Implemented and tested:** BR-01–BR-36 have meaningful implementation and
-  expected-result tests. BR-07 validation uses the explicit catalog
-  configuration. See the [BR-ID compliance matrix](docs/business_rules.md#week-3-compliance-matrix).
+- **Implementation and test evidence:** BR-01–BR-37 have test evidence for
+  their implemented behavior; this does not mean every rule is fully confirmed.
+  The compliance matrix records 34 PASS and 3 PARTIAL:
+  - **BR-07 — PARTIAL:** Required-rating validation is tested using the
+    provisional catalog, including employee-specific requirements and missing
+    required ratings. The authoritative catalog and competency requirements
+    remain unconfirmed.
+  - **BR-12 — PARTIAL:** Self-rating retention and exclusion from raw scoring
+    are tested. The separate gap-report requirement and scope remain unresolved.
+  - **BR-22 — PARTIAL:** Alphabetical pooling and boundary cases, including
+    final residual pools of 1, 5, and 9 employees, are tested. The fallback
+    policy for a final pool below 10 remains unconfirmed.
+  See the [BR-ID compliance matrix](docs/business_rules.md#week-3-compliance-matrix).
 - **Implementation assumptions, not official rules:** provisional sample-derived
-  competency catalog; next-grade promotion in grade-band file order, no
-  promotion from the highest grade, and tenure reset to zero; residual-pool
-  fallback for a final pool smaller than 10. Tests cover each assumption.
-- **Not required / not implemented:** a separate rating-gap report. The three
-  required CSV schemas are unchanged.
-- **Still requiring faculty confirmation:** the complete competency catalog
-  and required IDs per employee, official promotion-grade and tenure-reset
-  policy, and the intended behavior for a final pool below 10. The current
-  assumptions do not claim faculty approval.
+  competency catalog; next-grade promotion in grade-band file order and no
+  promotion from the highest grade; residual-pool fallback for a final pool
+  smaller than 10. Tests cover each assumption.
+- **Officially confirmed:** successful promotions reset `months_in_grade` to
+  zero; employees who are not promoted retain their existing value.
+- **Not generated:** a separate rating-gap report. The original brief
+  references one, but the current output contract defines only three CSVs and
+  supplies no gap-report schema or formula. See the open scope note in the
+  [decision log](docs/decision_log.md).
+- **Still requiring Capstone team confirmation:** grade-band minimum/maximum
+  values, promotion grade progression, and the intended company multiplier.
+  The authoritative competency catalog and required competencies, and the
+  behavior for a final pool below 10, also await confirmation.
+  See [the decision log](docs/decision_log.md).
 
 The official sample pack does not provide expected output files; verification
 is based on stated rules, actual input data, and planted scenarios rather than
@@ -178,6 +263,10 @@ invented expected outputs.
 ## What is NOT in this pack
 
 Expected outputs are not provided for this set. Validate your engine with your own test suite against the rules in your brief (BR-01 … BR-nn). A separate hidden input set with the same schema will be used at final evaluation; outputs are compared field-for-field, so follow the column formats above exactly in your own output.
+
+## Demo video
+
+Demo video: Pending — will be added separately.
 
 ## Output format expected at evaluation
 

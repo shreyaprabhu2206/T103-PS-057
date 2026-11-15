@@ -47,7 +47,17 @@ class TestOfficialInputBusinessRules(unittest.TestCase):
             writer.writerows(rows)
         return path
 
-    def _load(self, employees=None, goals=None, ratings=None, catalog=None):
+    def _load(
+        self,
+        employees=None,
+        goals=None,
+        ratings=None,
+        catalog=None,
+        band_min="18000",
+        band_max="60000",
+        unit_budget="500000",
+        employee_columns=None,
+    ):
         employees = employees or [dict(self.base_employee)]
         goals = goals or [
             {
@@ -74,7 +84,9 @@ class TestOfficialInputBusinessRules(unittest.TestCase):
             },
         ]
         employee_path = self._write_csv(
-            "employees.csv", self.employee_columns, employees
+            "employees.csv",
+            employee_columns or self.employee_columns,
+            employees,
         )
         goals_path = self._write_csv("goals.csv", self.goal_columns, goals)
         ratings_path = self._write_csv(
@@ -84,7 +96,11 @@ class TestOfficialInputBusinessRules(unittest.TestCase):
             "grade_bands.csv",
             ["grade", "band_min", "band_max"],
             [
-                {"grade": f"G{grade}", "band_min": "18000", "band_max": "60000"}
+                {
+                    "grade": f"G{grade}",
+                    "band_min": band_min,
+                    "band_max": band_max,
+                }
                 for grade in range(1, 8)
             ],
         )
@@ -94,7 +110,7 @@ class TestOfficialInputBusinessRules(unittest.TestCase):
             [
                 {
                     "unit": unit,
-                    "increment_budget_annual": "500000",
+                    "increment_budget_annual": unit_budget,
                     "unit_head": "M001",
                 }
                 for unit in sorted({row["unit"] for row in employees})
@@ -200,6 +216,46 @@ class TestOfficialInputBusinessRules(unittest.TestCase):
             "EMP-0001": "INVALID_WEIGHTS",
             "EMP-0002": "INVALID_WEIGHTS",
         })
+
+    def test_missing_goal_title_is_rejected(self):
+        goals = [{
+            "emp_id": "EMP-0001",
+            "goal_id": "G1",
+            "goal_title": "",
+            "weight": "100",
+        }]
+        with self.assertRaisesRegex(ValueError, "Invalid or duplicate goal"):
+            self._load(goals=goals)
+
+    def test_blank_csv_header_name_is_rejected(self):
+        with self.assertRaisesRegex(
+            ValueError, "employees.csv has a blank column name"
+        ):
+            self._load(employee_columns=[*self.employee_columns, ""])
+
+    def test_duplicate_csv_header_name_is_rejected(self):
+        with self.assertRaisesRegex(
+            ValueError, "employees.csv has duplicate column names"
+        ):
+            self._load(
+                employee_columns=[*self.employee_columns, "emp_id"]
+            )
+
+    def test_non_finite_grade_bands_and_unit_budgets_are_rejected(self):
+        for value in ("nan", "inf", "-inf"):
+            with self.subTest(field="band_min", value=value):
+                with self.assertRaisesRegex(
+                    ValueError, "invalid salary band limits"
+                ):
+                    self._load(band_min=value)
+            with self.subTest(field="band_max", value=value):
+                with self.assertRaisesRegex(
+                    ValueError, "invalid salary band limits"
+                ):
+                    self._load(band_max=value)
+            with self.subTest(field="unit_budget", value=value):
+                with self.assertRaisesRegex(ValueError, "must be finite"):
+                    self._load(unit_budget=value)
 
     def test_br06_self_and_manager_ratings_must_be_between_one_and_five(self):
         for field, value in (

@@ -11,7 +11,7 @@ and writes the required CSV reports.
 
 | Module | Responsibility |
 |---|---|
-| `main.py` | Legacy command workflow |
+| `main.py` | Entry point for the ordered command workflow, with a legacy CSV path when no command file is available |
 | `src/official_data.py` | CSV/config loading, schema checks, employee validation statuses, competency completeness |
 | `src/scoring.py` | Goal, competency, and combined raw scores |
 | `src/calibration.py` | Eligibility, alphabetical pooling, ranking, and bell-curve assignment |
@@ -37,8 +37,17 @@ change to one or two assigned goals, rejecting changes above one point.
 `RERUN_UNIT` identifies the current distribution pool containing the named
 unit, recalculates that pool and records final-rating changes. Distribution
 prints append a snapshot in command order; letters reflect the latest
-completed run. At the end of the workflow, promoted employee objects have
-their assumed next grade and `months_in_grade = 0`.
+completed run. A valid appeal updates manager ratings but keeps the last
+completed results as the pre-appeal comparison baseline and marks the
+appealed employee's unit as pending a rerun. While a rerun is pending,
+`RUN_APPRAISAL` is rejected with a message requiring `RERUN_UNIT` for that
+unit; the pending state and baseline are retained. The pending appeal is
+cleared only after the rerun and compensation refresh succeed, and
+`appeal_changes.csv` records every changed final rating against the preserved
+baseline. At the end of a successful workflow, promoted employee objects have
+the current assumed next grade and `months_in_grade = 0`; employees who were
+not promoted retain their existing months-in-grade value. The reset is an
+officially confirmed rule.
 
 ## 4. Data validation and scoring
 
@@ -73,18 +82,23 @@ eligible unit headcount, and candidates are chosen by raw score. The
 additional 5% is included once in the scaled total increment rate; the
 promotion increment is not added a second time during compensation.
 
-**Implementation assumptions, not official rules:** grade progression follows
-the row order in `grade_bands.csv`; employees at its last grade are excluded
-from promotion; `months_in_grade` resets to zero for a selected promotion.
-The grade-band cap used for compensation is the target grade's `band_max`.
-Revised basic is capped there, and any excess is recorded as a one-time lump
-sum. These assumptions require faculty confirmation and are not represented
-as faculty-approved rules.
+**Working assumption awaiting confirmation:** grade progression follows the
+row order in `grade_bands.csv`; employees at its last grade are excluded from
+promotion. The official clarification confirms that a successful promotion
+sets `months_in_grade` to zero; this is not an assumption. Employees not
+promoted retain their value.
+
+The existing grade-band values are loaded from `data/input/grade_bands.csv`
+without alteration. Their minimum and maximum values are awaiting Capstone
+confirmation. The implementation uses the target grade's `band_max` to cap
+revised basic and records excess as a one-time lump sum; this does not confirm
+that the supplied band values are official.
 
 Unit budgets are annual costs. Budget scaling evaluates the resulting annual
 increment cost after proration, salary rounding, the Rs 25,000 minimum floor,
-and grade caps. The official command sets the company multiplier; it is not
-derived from unit budgets.
+and grade caps. The root sample `commands.txt` currently sets the company
+multiplier to `1.05`; the intended multiplier is awaiting Capstone
+confirmation. It is not derived from unit budgets.
 
 PIP employees receive no increment or variable pay. Variable pay uses the
 current basic salary, target percentage for grade, final-rating multiplier,
@@ -104,8 +118,10 @@ The mandatory output reports and column orders are:
 
 Distribution rows follow `PRINT_DISTRIBUTION` execution order. Letters contain
 one row per employee, sorted by ID. Appeal changes contain employees whose
-final rating changed after recalibration. A separate rating-gap report is
-optional and is not generated; it is not in the mandatory output contract.
+final rating changed after recalibration. No separate rating-gap report is
+generated. Original Rule 1 references self-ratings only for a gap report, but
+the current output contract does not specify that report's schema or formula;
+whether it is required remains an open scope question.
 
 ## 8. Verification and unresolved external information
 
@@ -116,8 +132,11 @@ EC1–EC8 and extra documented cases, plus synthetic boundary tests where the
 sample data does not exercise a behavior such as a grade-cap lump sum.
 
 See the [Week 3 compliance matrix](business_rules.md#week-3-compliance-matrix)
-for each BR-ID's implementation and test. Faculty confirmation is still
-needed for the competency catalog, promotion-grade/tenure policy, and
-final-residual-pool policy. No expected output files are supplied by the
-official sample pack. A gap report remains optional; if requested, its
-formula and schema would need to be specified separately.
+for each BR-ID's implementation and test, and the [decision
+log](decision_log.md) for confirmation status. Capstone confirmation is still
+needed for grade-band minimum/maximum values, promotion grade progression, and
+the intended company multiplier. Capstone team confirmation is also needed
+for the competency catalog and final-residual-pool policy. No expected output
+files are supplied by the official sample pack. The rating-gap report scope also
+needs clarification before claiming that aspect of original Rule 1 is
+complete.

@@ -31,6 +31,10 @@ def _read_rows(path, required_columns):
                 f"{Path(path).name} must contain columns: "
                 f"{', '.join(required_columns)}"
             )
+        if any(not name for name in reader.fieldnames):
+            raise ValueError(f"{Path(path).name} has a blank column name")
+        if len(set(reader.fieldnames)) != len(reader.fieldnames):
+            raise ValueError(f"{Path(path).name} has duplicate column names")
         return list(reader)
 
 
@@ -235,18 +239,19 @@ def load_official_data(
     for row in _read_rows(
         goals_path, ("emp_id", "goal_id", "goal_title", "weight")
     ):
-        employee_id = row["emp_id"].strip()
-        goal_id = row["goal_id"].strip()
+        employee_id = (row.get("emp_id") or "").strip()
+        goal_id = (row.get("goal_id") or "").strip()
+        goal_title = (row.get("goal_title") or "").strip()
         if employee_id not in employees:
             raise ValueError(f"Goal references unknown employee: {employee_id}")
         key = employee_id, goal_id
-        if not goal_id or key in goal_keys:
+        if not goal_id or not goal_title or key in goal_keys:
             raise ValueError(f"Invalid or duplicate goal: {key}")
         goal_keys.add(key)
         weight = _integer(row["weight"], f"{employee_id}.{goal_id}.weight", 1, 100)
         goal_weight_totals[employee_id] += weight
         goals.append(
-            Goal(employee_id, goal_id, row["goal_title"].strip(), weight)
+            Goal(employee_id, goal_id, goal_title, weight)
         )
 
     for employee_id, total in goal_weight_totals.items():
@@ -270,9 +275,9 @@ def load_official_data(
         ),
         start=2,
     ):
-        employee_id = row["emp_id"].strip()
-        item_type = row["item_type"].strip().upper()
-        item_id = row["item_id"].strip()
+        employee_id = (row.get("emp_id") or "").strip()
+        item_type = (row.get("item_type") or "").strip().upper()
+        item_id = (row.get("item_id") or "").strip()
         if employee_id not in employees:
             raise ValueError(
                 f"ratings.csv line {row_number}: unknown employee {employee_id}"
@@ -334,15 +339,17 @@ def load_official_data(
     )
     budgets = {}
     for row in unit_rows:
-        unit = row["unit"].strip()
+        unit = (row.get("unit") or "").strip()
         if not unit or unit in budgets:
             raise ValueError(f"Invalid or duplicate unit budget: {unit!r}")
         try:
             budget = float(row["increment_budget_annual"])
         except (TypeError, ValueError):
             raise ValueError(f"{unit}: increment budget must be numeric")
-        if budget < 0:
-            raise ValueError(f"{unit}: increment budget cannot be negative")
+        if not isfinite(budget) or budget < 0:
+            raise ValueError(
+                f"{unit}: increment budget must be finite and non-negative"
+            )
         budgets[unit] = budget
 
     missing_units = {

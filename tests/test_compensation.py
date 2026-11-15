@@ -12,6 +12,7 @@ from src.compensation import (
     calculate_scaled_increment_rates,
     calculate_variable_pay,
     load_company_multiplier,
+    load_increment_budgets,
 )
 
 
@@ -448,6 +449,18 @@ class TestCompensation(unittest.TestCase):
         )
 
         self.assertEqual(load_company_multiplier(commands_path), 1.05)
+
+    def test_increment_budget_loader_rejects_non_finite_values(self):
+        budgets_path = Path(self.temp_dir.name) / "budgets.csv"
+        for value in ("nan", "inf", "-inf"):
+            budgets_path.write_text(
+                "business_unit,increment_budget\n"
+                f"IT,{value}\n",
+                encoding="utf-8",
+            )
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "must be finite"):
+                    load_increment_budgets(budgets_path)
 
 
 if __name__ == "__main__":

@@ -37,12 +37,13 @@ classDiagram
     class AppraisalWorkflow {
         +commands_path: Path
         +output_dir: Path
+        +pending_appeal: dict or None
         +execute()
         -_load(parts, line_number)
         -_run_appraisal()
         -_appeal(parts, line_number)
         -_rerun_unit(parts, line_number)
-        -_refresh_compensation()
+        -_refresh_compensation(final_results, scores)
     }
 
     class MainModule {
@@ -98,5 +99,7 @@ classDiagram
 `commands.txt` is a line-oriented input read by `AppraisalWorkflow.execute()`;
 it is not represented as a Python data class. The workflow processes settings,
 `LOAD`, `RUN_APPRAISAL`, `APPEAL`, `RERUN_UNIT`, and print commands in file
-order. There is no promoted-grade mapping in the official materials, so a
-selected promotion does not change grade or grade tenure.
+order. The current working assumption advances a promotion to the next grade
+in `grade_bands.csv` order; this progression is awaiting Capstone confirmation.
+After a successful promotion, the confirmed rule sets `months_in_grade` to
+zero. See the [decision log](decision_log.md).

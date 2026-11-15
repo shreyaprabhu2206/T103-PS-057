@@ -161,6 +161,8 @@ class AppraisalWorkflow:
         self.grade_bands_path = paths[3]
 
     def _run_appraisal(self):
+        if self.pending_appeal is not None:
+            raise ValueError(self._pending_appeal_rerun_message())
         if self.data is None:
             raise ValueError("LOAD must precede RUN_APPRAISAL")
         employees, goals, ratings, statuses, _, _ = self.data
@@ -184,52 +186,67 @@ class AppraisalWorkflow:
         )
         self._refresh_compensation()
 
-    def _refresh_compensation(self):
+    def _pending_appeal_rerun_message(self):
+        appeal = self.pending_appeal
+        return (
+            f"Appeal {appeal['appeal_id']} is pending; "
+            f"RERUN_UNIT|{appeal['unit']} is required before "
+            "RUN_APPRAISAL."
+        )
+
+    def _refresh_compensation(self, *, final_results=None, scores=None):
+        final_results = (
+            self.final_results if final_results is None else final_results
+        )
+        scores = self.scores if scores is None else scores
         employees, _, _, _, _, budgets = self.data
-        self.promoted_employee_ids = select_promotions(
+        promoted_employee_ids = select_promotions(
             employees,
-            self.final_results,
-            self.scores,
+            final_results,
+            scores,
             self.eligibility,
             self.cutoff_date,
             grade_order=list(self.data[4]),
         )
-        self.promoted_grades = {
+        promoted_grades = {
             employee_id: next_grade_in_order(
                 employees[employee_id].grade,
                 self.data[4],
             )
-            for employee_id in self.promoted_employee_ids
+            for employee_id in promoted_employee_ids
         }
         scaled_rates = calculate_scaled_increment_rates(
             employees,
-            self.final_results,
+            final_results,
             self.appraisal_year,
             budgets,
-            self.promoted_employee_ids,
+            promoted_employee_ids,
             self.cutoff_date,
             proration_through_cutoff=True,
             annualize_cost=True,
             grade_bands=self.data[4],
-            new_grades=self.promoted_grades,
+            new_grades=promoted_grades,
         )
-        self.compensation = {}
-        for employee_id, result in self.final_results.items():
+        compensation = {}
+        for employee_id, result in final_results.items():
             if result["final_rating"] is None:
                 continue
             employee = employees[employee_id]
-            self.compensation[employee_id] = calculate_compensation(
+            compensation[employee_id] = calculate_compensation(
                 employee,
                 result["final_rating"],
                 self.appraisal_year,
                 grade_bands_path=self.grade_bands_path,
-                new_grade=self.promoted_grades.get(employee_id),
-                is_promotion=employee_id in self.promoted_employee_ids,
+                new_grade=promoted_grades.get(employee_id),
+                is_promotion=employee_id in promoted_employee_ids,
                 company_multiplier=self.company_multiplier,
                 increment_rate_override=scaled_rates[employee_id],
                 appraisal_cutoff_date=self.cutoff_date,
                 proration_through_cutoff=True,
             )
+        self.promoted_employee_ids = promoted_employee_ids
+        self.promoted_grades = promoted_grades
+        self.compensation = compensation
 
     def _appeal(self, parts, line_number):
         if self.final_results is None:
@@ -275,6 +292,7 @@ class AppraisalWorkflow:
         self.pending_appeal = {
             "appeal_id": appeal_id,
             "employee_id": employee_id,
+            "unit": employees[employee_id].business_unit,
         }
         print(f"APPEAL {appeal_id} accepted")
 
@@ -285,6 +303,14 @@ class AppraisalWorkflow:
             raise ValueError(f"RUN_APPRAISAL must precede RERUN_UNIT (line {line_number})")
 
         unit = parts[1]
+        if (
+            self.pending_appeal is not None
+            and unit != self.pending_appeal["unit"]
+        ):
+            raise ValueError(
+                f"RERUN_UNIT|{self.pending_appeal['unit']} is required "
+                f"for pending appeal {self.pending_appeal['appeal_id']}"
+            )
         employees, goals, ratings, statuses, _, _ = self.data
         pools, unit_members = build_distribution_pools(
             employees, self.eligibility
@@ -321,13 +347,20 @@ class AppraisalWorkflow:
             self.eligibility,
             self.appraisal_year,
         )
+        previous_results = self.final_results
+        candidate_results = dict(previous_results)
         changed_ids = []
         for employee_id in target_ids:
-            before = self.final_results[employee_id]["final_rating"]
+            before = previous_results[employee_id]["final_rating"]
             after = updated_results[employee_id]["final_rating"]
-            self.final_results[employee_id] = updated_results[employee_id]
+            candidate_results[employee_id] = updated_results[employee_id]
             if before != after:
                 changed_ids.append((employee_id, before, after))
+        self._refresh_compensation(
+            final_results=candidate_results,
+            scores=updated_scores,
+        )
+        self.final_results = candidate_results
         self.scores = updated_scores
 
         if self.pending_appeal is not None:
@@ -341,8 +374,6 @@ class AppraisalWorkflow:
                     "rating_after": after,
                 })
             self.pending_appeal = None
-
-        self._refresh_compensation()
 
     def _letter_rows(self):
         employees = self.data[0]
@@ -431,7 +462,13 @@ class AppraisalWorkflow:
                         raise ValueError(
                             f"RUN_APPRAISAL takes no arguments (line {line_number})"
                         )
-                    self._run_appraisal()
+                    if self.pending_appeal is not None:
+                        print(
+                            "RUN_APPRAISAL rejected: "
+                            f"{self._pending_appeal_rerun_message()}"
+                        )
+                    else:
+                        self._run_appraisal()
                 elif command == "APPEAL":
                     self._appeal(parts, line_number)
                 elif command == "RERUN_UNIT":
